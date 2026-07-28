@@ -256,7 +256,7 @@ export default function Home() {
 
         <div className="content-scroll">
           {screen === "home" && (
-            <HomeScreen completion={completion} totalToday={totalToday} todos={todos} subjects={subjects} onTimer={() => goTimer()} onNavigate={setScreen} />
+            <HomeScreen completion={completion} totalToday={totalToday} todos={todos} subjects={subjects} onTimer={goTimer} onNavigate={setScreen} />
           )}
           {screen === "planner" && (
             <PlannerScreen plannerMode={plannerMode} setPlannerMode={setPlannerMode} todos={todos} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} />
@@ -286,37 +286,32 @@ export default function Home() {
   );
 }
 
-function HomeScreen({ completion, totalToday, todos, subjects, onTimer, onNavigate }: { completion: number; totalToday: number; todos: Todo[]; subjects: Subject[]; onTimer: () => void; onNavigate: (screen: Screen) => void }) {
-  return <>
-    <section className="hero-card">
-      <div className="hero-topline"><span>2026. 08. 01 · 토요일</span><span className="weather">맑음 27°</span></div>
-      <p className="eyebrow">수능까지 <strong>D-110</strong></p>
-      <h1>오늘 한 걸음이<br />내일의 나를 바꿔.</h1>
-      <div className="hero-decor decor-one" /><div className="hero-decor decor-two" />
+function HomeScreen({ completion, totalToday, todos, subjects, onTimer, onNavigate }: { completion: number; totalToday: number; todos: Todo[]; subjects: Subject[]; onTimer: (subject?: string) => void; onNavigate: (screen: Screen) => void }) {
+  const remainingTodos = todos.filter((todo) => !todo.done);
+  const goalMinutes = 360;
+  const goalPercent = Math.min(100, Math.round((totalToday / goalMinutes) * 100));
+  return <section className="home-v2">
+    <div className="home-date-row"><span>2026년 8월 1일 토요일</span><b>D-110</b></div>
+    <section className="today-focus-card">
+      <span>오늘 순공 시간</span>
+      <strong>{formatDuration(totalToday * 60)}</strong>
+      <div className="today-goal-line"><span>오늘 목표 06:00:00</span><b>{goalPercent}%</b></div>
+      <div className="today-progress"><i style={{ width: `${goalPercent}%` }} /></div>
+      <button onClick={() => onTimer()}><span>▶</span> 타이머 시작하기</button>
     </section>
-
-    <section className="summary-grid">
-      <article className="summary-card progress-card">
-        <div className="card-heading"><span>오늘의 목표</span><b>{completion}%</b></div>
-        <div className="progress-ring" style={{ "--progress": `${completion * 3.6}deg` } as React.CSSProperties}><span>{todos.filter((todo) => todo.done).length}<small>/{todos.length}</small></span></div>
-        <p>할 일 {todos.filter((todo) => !todo.done).length}개 남았어요</p>
-      </article>
-      <article className="summary-card time-card">
-        <div className="card-heading"><span>오늘 집중</span><button onClick={() => onNavigate("stats")}>자세히 ›</button></div>
-        <strong>{formatMinutes(totalToday)}</strong>
-        <div className="mini-bars"><i style={{ height: "38%" }} /><i style={{ height: "62%" }} /><i style={{ height: "84%" }} /><i className="today-bar" style={{ height: "95%" }} /><i style={{ height: "56%" }} /><i style={{ height: "28%" }} /></div>
-      </article>
+    <section className="home-section home-subject-overview">
+      <div className="home-section-header"><div><span className="section-kicker">SUBJECTS</span><h2>과목별 순공 시간</h2></div><button onClick={() => onNavigate("stats")}>통계 보기 →</button></div>
+      <div className="home-subject-list">{subjects.map((subject) => {
+        const percent = Math.min(100, Math.round((subject.minutes / subject.target) * 100));
+        return <button key={subject.id} className="home-subject-row" onClick={() => onTimer(subject.id)}><span className="home-subject-dot" style={{ background: subject.color }} /><span className="home-subject-name"><b>{subject.name}</b><small>목표 {formatMinutes(subject.target)}</small></span><span className="home-subject-time"><strong>{formatMinutes(subject.minutes)}</strong><i><em style={{ width: `${percent}%`, background: subject.color }} /></i></span><span className="home-subject-play">▶</span></button>;
+      })}</div>
     </section>
-
-    <section className="section-block home-tasks">
-      <div className="section-heading"><div><span className="section-kicker">TODAY&apos;S FOCUS</span><h2>오늘의 할 일</h2></div><button onClick={() => onNavigate("planner")}>전체 보기 <b>→</b></button></div>
-      <div className="compact-task-list">
-        {todos.slice(0, 3).map((todo) => { const subject = subjects.find((item) => item.id === todo.subject)!; return <div className="compact-task" key={todo.id}><span className="subject-dot" style={{ background: subject.color }} /><div><strong>{todo.text}</strong><span>{subject.name} · {todo.due}</span></div>{todo.done && <span className="done-mark">✓</span>}</div>; })}
-      </div>
+    <section className="home-section home-todo-overview">
+      <div className="home-section-header"><div><span className="section-kicker">TODAY&apos;S PLAN</span><h2>오늘의 할 일 <b>{completion}%</b></h2></div><button onClick={() => onNavigate("planner")}>플래너 →</button></div>
+      <div className="home-todo-list">{remainingTodos.slice(0, 3).map((todo) => { const subject = subjects.find((item) => item.id === todo.subject)!; return <button onClick={() => onNavigate("planner")} key={todo.id}><i style={{ borderColor: subject.color }} /><span>{todo.text}</span><small>{subject.name}</small></button>; })}</div>
+      {remainingTodos.length > 3 && <p className="home-todo-more">할 일 {remainingTodos.length - 3}개가 더 있어요</p>}
     </section>
-
-    <button className="quick-start" onClick={onTimer}><span className="play-button">▶</span><span><small>지금 바로</small>집중 시작하기</span><b>→</b></button>
-  </>;
+  </section>;
 }
 
 function PlannerScreen({ plannerMode, setPlannerMode, todos, subjects, studyLogs, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo }: { plannerMode: PlannerMode; setPlannerMode: (value: PlannerMode) => void; todos: Todo[]; subjects: Subject[]; studyLogs: StudyLog[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void }) {
