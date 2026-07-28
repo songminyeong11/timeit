@@ -146,7 +146,7 @@ button { border: 0; cursor: pointer; color: inherit; }
 
 /* Timer v2 — simple subject timer hierarchy inspired by practical study timers */
 .timer-v2 { padding: 18px 3px 7px; text-align: left; }
-.timer-status-bar { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 7px; color: #9a9495; font-size: 10px; font-variant-numeric: tabular-nums; }
+.timer-status-bar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px; color: #9a9495; font-size: 10px; font-variant-numeric: tabular-nums; }
 .timer-status-bar b { color: #555156; }.timer-date { color: #aaa5a4; }.timer-dday { padding: 4px 6px; border-radius: 6px; background: #f4e8e1; color: #c47866; font-size: 9px; font-weight: 800; }
 .timer-mode-row { display: inline-flex; gap: 16px; margin: 23px 0 15px; border-bottom: 1px solid #ece7e3; }
 .timer-mode-row button { position: relative; padding: 0 1px 10px; background: none; color: #aaa3a3; font-size: 13px; font-weight: 750; transition: color .3s ease; }

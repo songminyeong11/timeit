@@ -23,7 +23,7 @@ test("server-renders the Timeit study dashboard", async () => {
   assert.match(html, /<title>타임잇 \| 공부가 쌓이는 나만의 페이지<\/title>/);
   assert.match(html, /MY TO-DO/);
   assert.match(html, /오늘 순공 시간/);
-  assert.match(html, /05:10:00/);
+  assert.match(html, /00:00:00/);
   assert.match(html, /타이머/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|Building your site/i);
 });
@@ -37,7 +37,7 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /if \(isRunning\) \{\s*saveSession\(\);/);
   assert.match(page, /setStudyLogs\(\(items\) => \[\.\.\.items,/);
   assert.match(page, /durationMinutes: gridDuration/);
-  assert.match(page, /grassHours\.map/);
+  assert.match(page, /monthHours\.map/);
   assert.match(page, /displayHours\(hours\)/);
   assert.match(page, /TodoListCard className="home-todo-card"/);
   assert.match(page, /function PlannerScreen\(\{ totalToday, subjects, studyLogs/);
@@ -50,8 +50,9 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /const recordActiveSubject/);
   assert.match(page, /if \(isRunning\) recordActiveSubject\(\);\s*setSelectedSubject\(subjectId\);/);
   assert.match(page, /plannerTheme/);
-  assert.match(page, /function StudyGroupPanel/);
-  assert.match(page, /timeit-joined-groups/);
+  assert.doesNotMatch(page, /function StudyGroupPanel/);
+  assert.doesNotMatch(page, /수능 D-110 집중방/);
+  assert.match(page, /timeit-storage-version/);
   assert.match(page, /timeit-profile-name/);
   assert.doesNotMatch(page, /onBackup=\{backupData\}/);
   assert.match(css, /\.dark \.time-slot\.filled/);
