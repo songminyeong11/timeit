@@ -93,7 +93,7 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
   const [subjects, setSubjects] = useState<Subject[]>(initialSubjects);
   const [todos, setTodos] = useState<Todo[]>(initialTodos);
-  const [selectedSubject, setSelectedSubject] = useState("math");
+  const [selectedSubject, setSelectedSubject] = useState("focus");
   const [isRunning, setIsRunning] = useState(false);
   const [timerMode, setTimerMode] = useState<"stopwatch" | "pomodoro">("stopwatch");
   const [pomodoroPhase, setPomodoroPhase] = useState<"집중" | "휴식">("집중");
