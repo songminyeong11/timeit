@@ -12,7 +12,6 @@ type Subject = {
   color: string;
   soft: string;
   minutes: number;
-  target: number;
 };
 
 type Todo = {
@@ -29,13 +28,16 @@ type StudyLog = {
   subjectId: string;
   startMinutes: number;
   durationMinutes: number;
+  trackedMinutes?: number;
 };
 
+type PlannerTheme = "milk" | "lavender" | "sage";
+
 const initialSubjects: Subject[] = [
-  { id: "korean", name: "국어", short: "국", color: "#e68d87", soft: "#f9e3e0", minutes: 82, target: 120 },
-  { id: "math", name: "수학", short: "수", color: "#718fb8", soft: "#e1e9f5", minutes: 124, target: 150 },
-  { id: "english", name: "영어", short: "영", color: "#78ad95", soft: "#e1f0e8", minutes: 54, target: 90 },
-  { id: "society", name: "생활과 윤리", short: "윤", color: "#c394ac", soft: "#f3e4eb", minutes: 38, target: 60 },
+  { id: "korean", name: "국어", short: "국", color: "#e68d87", soft: "#f9e3e0", minutes: 60 },
+  { id: "math", name: "수학", short: "수", color: "#718fb8", soft: "#e1e9f5", minutes: 160 },
+  { id: "english", name: "영어", short: "영", color: "#78ad95", soft: "#e1f0e8", minutes: 50 },
+  { id: "society", name: "생활과 윤리", short: "윤", color: "#c394ac", soft: "#f3e4eb", minutes: 40 },
 ];
 
 const initialTodos: Todo[] = [
@@ -90,6 +92,20 @@ function formatMinutes(minutes: number) {
   return hours ? `${hours}시간 ${String(rest).padStart(2, "0")}분` : `${rest}분`;
 }
 
+function clockFromMinutes(minutes: number) {
+  const safeMinutes = Math.max(0, Math.min(1430, minutes));
+  return `${String(Math.floor(safeMinutes / 60)).padStart(2, "0")}:${String(safeMinutes % 60).padStart(2, "0")}`;
+}
+
+function minutesFromClock(value: string) {
+  const [hour = "0", minute = "0"] = value.split(":");
+  return Math.max(0, Math.min(1430, Number(hour) * 60 + Number(minute)));
+}
+
+function loggedMinutes(log: StudyLog) {
+  return log.trackedMinutes ?? log.durationMinutes;
+}
+
 function Icon({ children }: { children: string }) {
   return <span className="icon" aria-hidden="true">{children}</span>;
 }
@@ -108,18 +124,25 @@ export default function Home() {
   const [newTodo, setNewTodo] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [savedSession, setSavedSession] = useState<string | null>(null);
-  const [extraMinutes, setExtraMinutes] = useState(0);
   const [studyLogs, setStudyLogs] = useState<StudyLog[]>(initialStudyLogs);
   const [sessionStartMinutes, setSessionStartMinutes] = useState<number | null>(null);
   const [pomodoroRemaining, setPomodoroRemaining] = useState(25 * 60);
+  const [plannerTheme, setPlannerTheme] = useState<PlannerTheme>("milk");
 
   useEffect(() => {
     const savedTodos = window.localStorage.getItem("timeit-todos");
     const savedTheme = window.localStorage.getItem("timeit-theme");
     const savedLogs = window.localStorage.getItem("timeit-study-logs");
+    const savedSubjectMinutes = window.localStorage.getItem("timeit-subject-minutes");
+    const savedPlannerTheme = window.localStorage.getItem("timeit-planner-theme");
     if (savedTodos) setTodos(JSON.parse(savedTodos));
     if (savedTheme === "dark") setIsDark(true);
     if (savedLogs) setStudyLogs(JSON.parse(savedLogs));
+    if (savedSubjectMinutes) {
+      const minutes = JSON.parse(savedSubjectMinutes) as Record<string, number>;
+      setSubjects((items) => items.map((subject) => typeof minutes[subject.id] === "number" ? { ...subject, minutes: minutes[subject.id] } : subject));
+    }
+    if (savedPlannerTheme === "milk" || savedPlannerTheme === "lavender" || savedPlannerTheme === "sage") setPlannerTheme(savedPlannerTheme);
   }, []);
 
   useEffect(() => {
@@ -133,6 +156,14 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("timeit-study-logs", JSON.stringify(studyLogs));
   }, [studyLogs]);
+
+  useEffect(() => {
+    window.localStorage.setItem("timeit-subject-minutes", JSON.stringify(Object.fromEntries(subjects.map((subject) => [subject.id, subject.minutes]))));
+  }, [subjects]);
+
+  useEffect(() => {
+    window.localStorage.setItem("timeit-planner-theme", plannerTheme);
+  }, [plannerTheme]);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -172,9 +203,9 @@ export default function Home() {
   const activeSubject = subjects.find((subject) => subject.id === selectedSubject) ?? subjects[0];
   const completedCount = todos.filter((todo) => todo.done).length;
   const completion = Math.round((completedCount / todos.length) * 100);
-  const totalToday = 298 + extraMinutes + Math.floor(seconds / 60);
+  const totalToday = subjects.reduce((sum, subject) => sum + subject.minutes, 0) + Math.floor(seconds / 60);
   const liveSession = isRunning && sessionStartMinutes !== null && seconds > 0
-    ? { id: "live-session", subjectId: selectedSubject, startMinutes: sessionStartMinutes, durationMinutes: Math.max(10, Math.ceil((seconds / 60) / 10) * 10) }
+    ? { id: "live-session", subjectId: selectedSubject, startMinutes: sessionStartMinutes, durationMinutes: Math.max(10, Math.ceil((seconds / 60) / 10) * 10), trackedMinutes: Math.floor(seconds / 60) }
     : null;
   const donutStyle = useMemo(() => {
     const total = subjects.reduce((sum, subject) => sum + subject.minutes, 0);
@@ -198,15 +229,47 @@ export default function Home() {
     setIsAdding(false);
   };
 
+  const addStudyLog = (log: StudyLog) => {
+    const minutes = loggedMinutes(log);
+    setStudyLogs((items) => [...items, log]);
+    setSubjects((items) => items.map((subject) => subject.id === log.subjectId ? { ...subject, minutes: subject.minutes + minutes } : subject));
+  };
+
+  const updateStudyLog = (id: string, next: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => {
+    const previous = studyLogs.find((log) => log.id === id);
+    if (!previous) return;
+    const updated: StudyLog = { ...previous, ...next, trackedMinutes: next.durationMinutes };
+    const previousMinutes = loggedMinutes(previous);
+    const nextMinutes = loggedMinutes(updated);
+    setStudyLogs((items) => items.map((log) => log.id === id ? updated : log));
+    setSubjects((items) => items.map((subject) => {
+      if (subject.id === previous.subjectId && subject.id === updated.subjectId) return { ...subject, minutes: Math.max(0, subject.minutes + nextMinutes - previousMinutes) };
+      if (subject.id === previous.subjectId) return { ...subject, minutes: Math.max(0, subject.minutes - previousMinutes) };
+      if (subject.id === updated.subjectId) return { ...subject, minutes: subject.minutes + nextMinutes };
+      return subject;
+    }));
+  };
+
+  const deleteStudyLog = (id: string) => {
+    const previous = studyLogs.find((log) => log.id === id);
+    if (!previous) return;
+    const minutes = loggedMinutes(previous);
+    setStudyLogs((items) => items.filter((log) => log.id !== id));
+    setSubjects((items) => items.map((subject) => subject.id === previous.subjectId ? { ...subject, minutes: Math.max(0, subject.minutes - minutes) } : subject));
+  };
+
   const saveSession = () => {
-    if (!seconds) return;
+    if (!seconds) {
+      setIsRunning(false);
+      setSessionStartMinutes(null);
+      setPomodoroRemaining(25 * 60);
+      return;
+    }
     const recorded = Math.max(1, Math.floor(seconds / 60));
     const gridDuration = Math.max(10, Math.ceil(recorded / 10) * 10);
     const now = new Date();
     const startMinutes = sessionStartMinutes ?? now.getHours() * 60 + now.getMinutes();
-    setExtraMinutes((value) => value + recorded);
-    setSubjects((items) => items.map((subject) => subject.id === selectedSubject ? { ...subject, minutes: subject.minutes + recorded } : subject));
-    setStudyLogs((items) => [...items, { id: `session-${Date.now()}`, subjectId: selectedSubject, startMinutes, durationMinutes: gridDuration }]);
+    addStudyLog({ id: `session-${Date.now()}`, subjectId: selectedSubject, startMinutes, durationMinutes: gridDuration, trackedMinutes: recorded });
     setSavedSession(`${activeSubject.name} ${formatMinutes(recorded)} 기록됨`);
     setSeconds(0);
     setIsRunning(false);
@@ -228,13 +291,27 @@ export default function Home() {
   };
 
   const chooseSubject = (subjectId: string) => {
-    setSelectedSubject(subjectId);
-    if (!isRunning) {
-      const now = new Date();
-      setSessionStartMinutes(now.getHours() * 60 + now.getMinutes());
-      setIsRunning(true);
-      setSavedSession(null);
+    if (subjectId === selectedSubject) {
+      if (!isRunning) toggleTimer();
+      return;
     }
+    const now = new Date();
+    if (isRunning) saveSession();
+    setSelectedSubject(subjectId);
+    setSessionStartMinutes(now.getHours() * 60 + now.getMinutes());
+    setSeconds(0);
+    setSavedSession(null);
+    setIsRunning(true);
+  };
+
+  const backupData = () => {
+    const file = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), subjects, todos, studyLogs, plannerTheme }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `timeit-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const changeTimerMode = (mode: "stopwatch" | "pomodoro") => {
@@ -260,7 +337,7 @@ export default function Home() {
   };
 
   return (
-    <main className={`app-shell ${isDark ? "dark" : ""} ${isRunning && screen === "timer" ? "focus-active" : ""}`}>
+    <main className={`app-shell planner-theme-${plannerTheme} ${isDark ? "dark" : ""} ${isRunning && screen === "timer" ? "focus-active" : ""}`}>
       <section className="phone-frame">
         <header className="topbar">
           <button className="avatar" aria-label="프로필">서</button>
@@ -275,13 +352,13 @@ export default function Home() {
             <HomeScreen completion={completion} totalToday={totalToday} todos={todos} subjects={subjects} onTimer={goTimer} onNavigate={setScreen} />
           )}
           {screen === "planner" && (
-            <PlannerScreen plannerMode={plannerMode} setPlannerMode={setPlannerMode} todos={todos} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} />
+            <PlannerScreen plannerMode={plannerMode} setPlannerMode={setPlannerMode} todos={todos} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} onAddStudyLog={addStudyLog} onUpdateStudyLog={updateStudyLog} onDeleteStudyLog={deleteStudyLog} />
           )}
           {screen === "timer" && (
-            <TimerScreen activeSubject={activeSubject} subjects={subjects} selectedSubject={selectedSubject} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { setPomodoroPhase((phase) => phase === "집중" ? "휴식" : "집중"); setPomodoroRemaining(pomodoroPhase === "집중" ? 5 * 60 : 25 * 60); }} onReset={resetTimer} savedSession={savedSession} />
+            <TimerScreen activeSubject={activeSubject} subjects={subjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { setPomodoroPhase((phase) => phase === "집중" ? "휴식" : "집중"); setPomodoroRemaining(pomodoroPhase === "집중" ? 5 * 60 : 25 * 60); }} onReset={resetTimer} savedSession={savedSession} />
           )}
           {screen === "stats" && <StatsScreen subjects={subjects} totalToday={totalToday} donutStyle={donutStyle} />}
-          {screen === "settings" && <SettingsScreen subjects={subjects} isDark={isDark} setIsDark={setIsDark} />}
+          {screen === "settings" && <SettingsPanel subjects={subjects} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} onBackup={backupData} />}
         </div>
 
         <nav className="bottom-nav" aria-label="주요 메뉴">
@@ -319,19 +396,19 @@ function HomeScreen({ completion, totalToday, todos, subjects, onTimer, onNaviga
   </section>;
 }
 
-function PlannerScreen({ plannerMode, setPlannerMode, todos, subjects, studyLogs, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo }: { plannerMode: PlannerMode; setPlannerMode: (value: PlannerMode) => void; todos: Todo[]; subjects: Subject[]; studyLogs: StudyLog[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void }) {
+function PlannerScreen({ plannerMode, setPlannerMode, todos, subjects, studyLogs, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { plannerMode: PlannerMode; setPlannerMode: (value: PlannerMode) => void; todos: Todo[]; subjects: Subject[]; studyLogs: StudyLog[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
   return <>
     <section className="screen-intro planner-intro"><span className="section-kicker">PLAN YOUR DAY</span><h1>공부가 쌓이는<br /><em>나만의 페이지.</em></h1></section>
     <div className="segmented-control" role="tablist">
       {(["daily", "weekly", "monthly"] as PlannerMode[]).map((mode) => <button key={mode} className={plannerMode === mode ? "selected" : ""} onClick={() => setPlannerMode(mode)}>{mode === "daily" ? "일간" : mode === "weekly" ? "주간" : "월간"}</button>)}
     </div>
-    {plannerMode === "daily" && <DailyPlanner todos={todos} subjects={subjects} studyLogs={studyLogs} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} />}
+    {plannerMode === "daily" && <DailyPlanner todos={todos} subjects={subjects} studyLogs={studyLogs} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} onAddStudyLog={onAddStudyLog} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} />}
     {plannerMode === "weekly" && <WeeklyPlanner />}
     {plannerMode === "monthly" && <MonthlyPlanner />}
   </>;
 }
 
-function DailyPlanner({ todos, subjects, studyLogs, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo }: { todos: Todo[]; subjects: Subject[]; studyLogs: StudyLog[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void }) {
+function DailyPlanner({ todos, subjects, studyLogs, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { todos: Todo[]; subjects: Subject[]; studyLogs: StudyLog[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
   return <>
     <section className="date-strip"><button>‹</button><div><span>2026년 8월</span><strong>1 <small>토</small></strong></div><button>›</button></section>
     <section className="planner-card todo-card">
@@ -341,26 +418,61 @@ function DailyPlanner({ todos, subjects, studyLogs, selectedSubject, setSelected
       </div>
       {isAdding ? <div className="add-todo"><select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)}>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select><input autoFocus value={newTodo} onChange={(event) => setNewTodo(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTodo(); }} placeholder="예: 수능특강 2강 풀기" /><button onClick={addTodo}>추가</button></div> : <button className="add-line" onClick={() => setIsAdding(true)}>＋ 오늘의 할 일 추가</button>}
     </section>
-    <TimelineGrid subjects={subjects} studyLogs={studyLogs} />
+    <TimelineGrid subjects={subjects} studyLogs={studyLogs} onAddStudyLog={onAddStudyLog} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} />
   </>;
 }
 
-function TimelineGrid({ subjects, studyLogs }: { subjects: Subject[]; studyLogs: StudyLog[] }) {
+function TimelineGrid({ subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
   const slots = Array.from({ length: 144 }, (_, index) => index);
   const hours = Array.from({ length: 24 }, (_, index) => index);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ subjectId: subjects[0]?.id ?? "math", startTime: "08:00", duration: 60 });
   const slotLog = (slot: number) => studyLogs.find((log) => {
     const minute = slot * 10;
     return minute >= log.startMinutes && minute < log.startMinutes + log.durationMinutes;
   });
 
+  const openNewLog = () => {
+    setEditingLogId("new");
+    setDraft({ subjectId: subjects[0]?.id ?? "math", startTime: "08:00", duration: 60 });
+  };
+
+  const openExistingLog = (log: StudyLog) => {
+    if (log.id === "live-session") return;
+    setEditingLogId(log.id);
+    setDraft({ subjectId: log.subjectId, startTime: clockFromMinutes(log.startMinutes), duration: log.durationMinutes });
+  };
+
+  const saveLog = () => {
+    if (!editingLogId) return;
+    const durationMinutes = Math.max(10, Math.min(720, Math.round(draft.duration / 10) * 10));
+    const next = { subjectId: draft.subjectId, startMinutes: minutesFromClock(draft.startTime), durationMinutes };
+    if (editingLogId === "new") onAddStudyLog({ id: `manual-${Date.now()}`, ...next, trackedMinutes: durationMinutes });
+    else onUpdateStudyLog(editingLogId, next);
+    setEditingLogId(null);
+  };
+
+  const deleteLog = () => {
+    if (!editingLogId || editingLogId === "new") return;
+    onDeleteStudyLog(editingLogId);
+    setEditingLogId(null);
+  };
+
   return <section className="planner-card timetable-card">
     <div className="planner-card-header timetable-heading">
+      <button className="timeline-edit-toggle" onClick={() => { setIsEditorOpen((value) => !value); setEditingLogId(null); }}>기록 수정</button>
       <div><span className="section-kicker">STUDY TIMELINE</span><h2>24시간 타임테이블</h2></div>
       <span className="ten-minutes">10분 단위</span>
     </div>
     <div className="timeline-legend">{subjects.map((subject) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}</span>)}</div>
     <p className="timetable-helper">타이머 기록이 과목 색상의 형광펜 칸으로 채워져요.</p>
     <div className="time-table-scroll" aria-label="24시간 10분 단위 학습 시간표">
+      {isEditorOpen && <section className="timeline-editor" aria-label="타임테이블 기록 수정">
+        <div className="timeline-editor-head"><div><span>STUDY RECORDS</span><strong>기록을 추가하거나 수정하세요</strong></div><button onClick={openNewLog}>+ 기록 추가</button></div>
+        <div className="timeline-record-list">{studyLogs.filter((log) => log.id !== "live-session").sort((a, b) => a.startMinutes - b.startMinutes).map((log) => { const subject = subjects.find((item) => item.id === log.subjectId); return <button className={editingLogId === log.id ? "selected" : ""} onClick={() => openExistingLog(log)} key={log.id}><i style={{ background: subject?.color }} /><span>{clockFromMinutes(log.startMinutes)} · {formatMinutes(loggedMinutes(log))}</span><b>{subject?.name}</b></button>; })}</div>
+        {editingLogId && <div className="timeline-edit-form"><label>과목<select value={draft.subjectId} onChange={(event) => setDraft((value) => ({ ...value, subjectId: event.target.value }))}>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label><label>시작 시간<input type="time" value={draft.startTime} onChange={(event) => setDraft((value) => ({ ...value, startTime: event.target.value }))} /></label><label>공부 시간 (분)<input type="number" min="10" max="720" step="10" value={draft.duration} onChange={(event) => setDraft((value) => ({ ...value, duration: Number(event.target.value) || 10 }))} /></label><div className="timeline-edit-buttons"><button className="timeline-save" onClick={saveLog}>{editingLogId === "new" ? "기록 추가" : "수정 완료"}</button>{editingLogId !== "new" && <button className="timeline-delete" onClick={deleteLog}>기록 삭제</button>}</div></div>}
+      </section>}
       <div className="time-table">
         <div className="time-axis">{hours.map((hour) => <span key={hour}>{String(hour).padStart(2, "0")}:00</span>)}</div>
         <div className="time-slots">
@@ -391,21 +503,21 @@ function MonthlyPlanner() {
   return <section className="month-panel"><article className="monthly-summary"><div><span className="section-kicker">AUGUST</span><h2>8월의 기록</h2></div><div><b>21</b><span>집중한 날</span></div></article><div className="calendar-head">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-grid">{Array.from({ length: 5 }).map((_, index) => <i key={`blank-${index}`} />)}{days.map((day) => <button key={day} className={`${day === 1 ? "today-date" : ""} ${[2, 3, 7, 8, 11, 12, 13, 14, 17, 18, 20, 22, 23, 24, 26, 28, 29, 30].includes(day) ? "studied" : ""}`}><span>{day}</span>{[2, 7, 11, 18, 22, 29].includes(day) && <b>{day === 22 ? "✦" : "●"}</b>}</button>)}</div><article className="month-message"><span>8월 스티커</span><strong>꾸준히 해온 나를 칭찬해요</strong><b>🌿</b></article></section>;
 }
 
-function TimerScreen({ activeSubject, subjects, selectedSubject, seconds, pomodoroRemaining, isRunning, timerMode, pomodoroPhase, onChooseSubject, onToggle, onChangeMode, onChangePhase, onReset, savedSession }: { activeSubject: Subject; subjects: Subject[]; selectedSubject: string; seconds: number; pomodoroRemaining: number; isRunning: boolean; timerMode: "stopwatch" | "pomodoro"; pomodoroPhase: "집중" | "휴식"; onChooseSubject: (id: string) => void; onToggle: () => void; onChangeMode: (mode: "stopwatch" | "pomodoro") => void; onChangePhase: () => void; onReset: () => void; savedSession: string | null }) {
+function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, seconds, pomodoroRemaining, isRunning, timerMode, pomodoroPhase, onChooseSubject, onToggle, onChangeMode, onChangePhase, onReset, savedSession }: { activeSubject: Subject; subjects: Subject[]; selectedSubject: string; totalToday: number; seconds: number; pomodoroRemaining: number; isRunning: boolean; timerMode: "stopwatch" | "pomodoro"; pomodoroPhase: "집중" | "휴식"; onChooseSubject: (id: string) => void; onToggle: () => void; onChangeMode: (mode: "stopwatch" | "pomodoro") => void; onChangePhase: () => void; onReset: () => void; savedSession: string | null }) {
   const displayTime = timerMode === "pomodoro"
     ? `${String(Math.floor(pomodoroRemaining / 60)).padStart(2, "0")}:${String(pomodoroRemaining % 60).padStart(2, "0")}`
     : formatDuration(seconds);
 
   return <section className={`timer-page timer-v2 ${isRunning ? "running" : ""}`} style={{ "--subject": activeSubject.color, "--subject-soft": activeSubject.soft } as React.CSSProperties}>
-    <div className="timer-status-bar"><span>오늘 순공 <b>04:58</b></span><span className="timer-date">8월 1일 토요일</span><span className="timer-dday">D-110</span></div>
+    <div className="timer-status-bar"><span>오늘 순공 <b>{formatDuration(totalToday * 60)}</b></span><span className="timer-date">8월 1일 토요일</span><span className="timer-dday">D-110</span></div>
     <div className="timer-mode-row" role="tablist"><button className={timerMode === "stopwatch" ? "selected" : ""} onClick={() => onChangeMode("stopwatch")}>스톱워치</button><button className={timerMode === "pomodoro" ? "selected" : ""} onClick={() => onChangeMode("pomodoro")}>뽀모도로</button></div>
     <section className="focus-console">
       <div className="focus-subject"><span style={{ background: activeSubject.color }}>{activeSubject.short}</span><div><small>{timerMode === "pomodoro" ? `${pomodoroPhase} 세션` : "현재 과목"}</small><strong>{activeSubject.name}</strong></div><i className={isRunning ? "signal on" : "signal"} /></div>
       <div className="focus-time"><span>{timerMode === "pomodoro" ? (pomodoroPhase === "집중" ? "집중 남은 시간" : "휴식 남은 시간") : "공부 시간"}</span><strong>{displayTime}</strong><small>{isRunning ? "측정 중" : seconds ? "일시 정지" : "과목을 선택해 시작하세요"}</small></div>
-      <div className="focus-controls"><button className="timer-reset" onClick={onReset} aria-label="타이머 초기화">↺</button><button className="timer-main" onClick={onToggle}>{isRunning ? "중단하고 기록" : "집중 시작"}<b>{isRunning ? "■" : "▶"}</b></button></div>
+      <div className="focus-controls"><button className="timer-reset" onClick={onReset} aria-label="타이머 초기화">↺</button><button className="timer-main" onClick={onToggle}>{isRunning ? "중지" : "집중 시작"}<b>{isRunning ? "■" : "▶"}</b></button></div>
       {timerMode === "pomodoro" && <button className="pomodoro-rule" onClick={onChangePhase}><span>{pomodoroPhase === "집중" ? "25분 집중 중" : "5분 휴식 중"}</span><b>{pomodoroPhase === "집중" ? "휴식으로 전환" : "집중으로 전환"} →</b></button>}
     </section>
-    <section className="subject-timer-list"><div className="subject-list-heading"><div><span className="section-kicker">SUBJECT TIMER</span><h2>과목별 집중 시간</h2></div><span>과목을 눌러 시작</span></div>{subjects.map((subject) => { const isActive = subject.id === selectedSubject; const shownSeconds = isActive ? subject.minutes * 60 + seconds : subject.minutes * 60; return <button key={subject.id} className={`subject-timer-row ${isActive ? "active" : ""}`} onClick={() => onChooseSubject(subject.id)}><span className="subject-token" style={{ background: subject.soft, color: subject.color }}>{subject.short}</span><span className="subject-timer-name"><b>{subject.name}</b><small>{isActive && isRunning ? "현재 측정 중" : `${formatMinutes(subject.target)} 목표`}</small></span><strong>{formatDuration(shownSeconds)}</strong><span className="subject-play">{isActive && isRunning ? "Ⅱ" : "▶"}</span></button>; })}</section>
+    <section className="subject-timer-list"><div className="subject-list-heading"><div><span className="section-kicker">SUBJECT TIMER</span><h2>과목별 집중 시간</h2></div><span>과목을 눌러 시작</span></div>{subjects.map((subject) => { const isActive = subject.id === selectedSubject; const shownSeconds = isActive ? subject.minutes * 60 + seconds : subject.minutes * 60; return <button key={subject.id} className={`subject-timer-row ${isActive ? "active" : ""}`} onClick={() => onChooseSubject(subject.id)}><span className="subject-token" style={{ background: subject.soft, color: subject.color }}>{subject.short}</span><span className="subject-timer-name"><b>{subject.name}</b><small>{isActive && isRunning ? "현재 측정 중" : "눌러서 집중 시작"}</small></span><strong>{formatDuration(shownSeconds)}</strong><span className="subject-play">{isActive && isRunning ? "Ⅱ" : "▶"}</span></button>; })}</section>
     {savedSession && <div className="saved-toast">✓ {savedSession}</div>}
   </section>;
 }
@@ -415,6 +527,20 @@ function StatsScreen({ subjects, totalToday, donutStyle }: { subjects: Subject[]
   return <section className="stats-page"><div className="screen-intro"><span className="section-kicker">STUDY INSIGHTS</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div><article className="stats-highlight"><span>이번 주 총 집중</span><strong>16시간 <em>36분</em></strong><p>지난주보다 <b>2시간 14분</b> 더 해냈어요 <span>↗</span></p></article><article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><button>이번 주⌄</button></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(total)}</b><small>누적 공부</small></div></div><div className="donut-legend">{subjects.map((subject) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{Math.round((subject.minutes / total) * 100)}%</b></span>)}</div></div></article><article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">WEEKLY FLOW</span><h2>이번 주 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(totalToday)}</b></div><div className="stats-bars">{week.map(([day, , value]) => <div key={day}><i style={{ height: `${Math.max(Number(value) / 3.2, 3)}%` }} /><span>{day}</span></div>)}</div></article><article className="analytics-card grass-card"><div className="planner-card-header"><div><span className="section-kicker">STUDY GARDEN</span><h2>공부 잔디</h2></div><span className="garden-total">이번 달 21일</span></div><div className="grass-grid grass-hours">{grassHours.map((hours, index) => <span className={`grass-${grassLevel(hours)}`} key={index} title={`${index + 1}일 · ${displayHours(hours)}`}><b>{displayHours(hours)}</b></span>)}</div><div className="grass-legend"><span>적게</span><i className="grass-0" /><i className="grass-1" /><i className="grass-2" /><i className="grass-4" /><span>많이</span></div></article></section>;
 }
 
-function SettingsScreen({ subjects, isDark, setIsDark }: { subjects: Subject[]; isDark: boolean; setIsDark: (value: boolean) => void }) {
-  return <section className="settings-page"><div className="screen-intro"><span className="section-kicker">MY SPACE</span><h1>내 공부의 결을<br /><em>정리하는 곳.</em></h1></div><article className="profile-card"><div className="large-avatar">서</div><div><h2>서윤의 타임잇</h2><p>오늘도 작은 집중을 모으는 중</p></div><button>편집</button></article><section className="settings-group"><span>과목 관리</span>{subjects.map((subject) => <button key={subject.id}><i style={{ background: subject.color }} /><b>{subject.name}</b><small>목표 {formatMinutes(subject.target)}</small><strong>›</strong></button>)}</section><section className="settings-group"><span>화면 설정</span><button onClick={() => setIsDark(!isDark)}><i className="theme-icon">{isDark ? "☾" : "☀"}</i><b>다크 모드</b><span className={`toggle ${isDark ? "on" : ""}`}><i /></span></button><button><i className="theme-icon">♢</i><b>플래너 테마</b><small>밀크티 베이지</small><strong>›</strong></button></section><section className="settings-group"><span>데이터</span><button><i className="theme-icon">⇧</i><b>내 기록 백업하기</b><strong>›</strong></button></section></section>;
+function SettingsPanel({ subjects, isDark, setIsDark, plannerTheme, setPlannerTheme, onBackup }: { subjects: Subject[]; isDark: boolean; setIsDark: (value: boolean) => void; plannerTheme: PlannerTheme; setPlannerTheme: (value: PlannerTheme) => void; onBackup: () => void }) {
+  const [isThemeOpen, setIsThemeOpen] = useState(false);
+  const themes: { id: PlannerTheme; label: string; description: string }[] = [
+    { id: "milk", label: "밀크티 베이지", description: "따뜻하고 차분한 노트" },
+    { id: "lavender", label: "라일락 노트", description: "맑은 보랏빛 포인트" },
+    { id: "sage", label: "세이지 그린", description: "눈이 편한 초록 노트" },
+  ];
+  const selectedTheme = themes.find((theme) => theme.id === plannerTheme)!;
+
+  return <section className="settings-page settings-v2">
+    <div className="screen-intro"><span className="section-kicker">MY SPACE</span><h1>공부할 공간을<br /><em>가볍게 정리해요.</em></h1></div>
+    <article className="profile-card profile-card-static"><div className="large-avatar">민</div><div><h2>송민영님의 타임잇</h2><p>오늘의 기록을 차분히 쌓아가고 있어요.</p></div></article>
+    <section className="settings-group settings-subjects"><span>과목 관리</span>{subjects.map((subject) => <div className="settings-subject" key={subject.id}><i style={{ background: subject.color }} /><b>{subject.name}</b><small>{formatMinutes(subject.minutes)} 기록됨</small></div>)}</section>
+    <section className="settings-group"><span>화면 설정</span><button onClick={() => setIsDark(!isDark)}><i className="theme-icon">{isDark ? "☾" : "☀"}</i><b>다크 모드</b><span className={`toggle ${isDark ? "on" : ""}`}><i /></span></button><button onClick={() => setIsThemeOpen((value) => !value)}><i className="theme-icon">✦</i><b>플래너 테마</b><small>{selectedTheme.label}</small><strong>›</strong></button>{isThemeOpen && <div className="planner-theme-options">{themes.map((theme) => <button key={theme.id} className={plannerTheme === theme.id ? "selected" : ""} onClick={() => { setPlannerTheme(theme.id); setIsThemeOpen(false); }}><i className={`theme-swatch ${theme.id}`} /><span><b>{theme.label}</b><small>{theme.description}</small></span><strong>{plannerTheme === theme.id ? "✓" : ""}</strong></button>)}</div>}</section>
+    <section className="settings-group"><span>내 데이터</span><button onClick={onBackup}><i className="theme-icon">↓</i><b>내 기록 백업하기</b><small>JSON 파일로 저장</small><strong>›</strong></button></section>
+  </section>;
 }

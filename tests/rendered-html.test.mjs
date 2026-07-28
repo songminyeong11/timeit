@@ -23,7 +23,7 @@ test("server-renders the Timeit study dashboard", async () => {
   assert.match(html, /<title>타임잇 \| 공부가 쌓이는 나만의 페이지<\/title>/);
   assert.match(html, /오늘의 할 일/);
   assert.match(html, /오늘 순공 시간/);
-  assert.match(html, /04:58:00/);
+  assert.match(html, /05:10:00/);
   assert.match(html, /타이머/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|Building your site/i);
 });
@@ -43,4 +43,13 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.bottom-nav \{ position: fixed;/);
   assert.match(css, /\.grass-hours span b/);
   assert.match(css, /\.dark \.home-v3/);
+  assert.match(page, /const updateStudyLog/);
+  assert.match(page, /const deleteStudyLog/);
+  assert.match(page, /onAddStudyLog=\{addStudyLog\}/);
+  assert.match(page, /if \(isRunning\) saveSession\(\);/);
+  assert.match(page, /plannerTheme/);
+  assert.match(page, /onBackup=\{backupData\}/);
+  assert.match(css, /\.dark \.time-slot\.filled/);
+  assert.match(css, /\.timeline-editor/);
+  assert.match(page, /"중지"/);
 });
