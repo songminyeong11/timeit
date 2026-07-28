@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 type Screen = "home" | "planner" | "timer" | "stats" | "settings";
-type PlannerMode = "daily" | "weekly" | "monthly";
 
 type Subject = {
   id: string;
@@ -33,6 +32,16 @@ type StudyLog = {
 
 type PlannerTheme = "milk" | "lavender" | "sage";
 
+type StudyGroup = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  members: number;
+  averageMinutes: number;
+  accent: string;
+};
+
 const initialSubjects: Subject[] = [
   { id: "korean", name: "국어", short: "국", color: "#e68d87", soft: "#f9e3e0", minutes: 60 },
   { id: "math", name: "수학", short: "수", color: "#718fb8", soft: "#e1e9f5", minutes: 160 },
@@ -53,6 +62,12 @@ const initialStudyLogs: StudyLog[] = [
   { id: "english-words", subjectId: "english", startMinutes: 630, durationMinutes: 50 },
   { id: "math-review", subjectId: "math", startMinutes: 800, durationMinutes: 70 },
   { id: "ethics-note", subjectId: "society", startMinutes: 920, durationMinutes: 40 },
+];
+
+const studyGroups: StudyGroup[] = [
+  { id: "suneung-focus", name: "수능 D-110 집중방", category: "수능 · 고3", description: "매일의 순공을 조용히 쌓는 방", members: 18, averageMinutes: 294, accent: "#e09a83" },
+  { id: "math-morning", name: "아침 수학 루틴", category: "수학 · 루틴", description: "오전 7시, 개념부터 기출까지", members: 12, averageMinutes: 218, accent: "#748fbb" },
+  { id: "library-night", name: "독서실 야간 자습", category: "자습 · 야간", description: "22시까지 서로의 집중을 응원해요", members: 27, averageMinutes: 251, accent: "#7eae99" },
 ];
 
 const week = [
@@ -112,7 +127,6 @@ function Icon({ children }: { children: string }) {
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [plannerMode, setPlannerMode] = useState<PlannerMode>("daily");
   const [subjects, setSubjects] = useState<Subject[]>(initialSubjects);
   const [todos, setTodos] = useState<Todo[]>(initialTodos);
   const [selectedSubject, setSelectedSubject] = useState("math");
@@ -128,6 +142,9 @@ export default function Home() {
   const [sessionStartMinutes, setSessionStartMinutes] = useState<number | null>(null);
   const [pomodoroRemaining, setPomodoroRemaining] = useState(25 * 60);
   const [plannerTheme, setPlannerTheme] = useState<PlannerTheme>("milk");
+  const [profileName, setProfileName] = useState("송민영");
+  const [profileColor, setProfileColor] = useState("#e5a089");
+  const [joinedGroupIds, setJoinedGroupIds] = useState<string[]>(["suneung-focus"]);
 
   useEffect(() => {
     const savedTodos = window.localStorage.getItem("timeit-todos");
@@ -135,6 +152,9 @@ export default function Home() {
     const savedLogs = window.localStorage.getItem("timeit-study-logs");
     const savedSubjectMinutes = window.localStorage.getItem("timeit-subject-minutes");
     const savedPlannerTheme = window.localStorage.getItem("timeit-planner-theme");
+    const savedProfileName = window.localStorage.getItem("timeit-profile-name");
+    const savedProfileColor = window.localStorage.getItem("timeit-profile-color");
+    const savedGroups = window.localStorage.getItem("timeit-joined-groups");
     if (savedTodos) setTodos(JSON.parse(savedTodos));
     if (savedTheme === "dark") setIsDark(true);
     if (savedLogs) setStudyLogs(JSON.parse(savedLogs));
@@ -143,6 +163,9 @@ export default function Home() {
       setSubjects((items) => items.map((subject) => typeof minutes[subject.id] === "number" ? { ...subject, minutes: minutes[subject.id] } : subject));
     }
     if (savedPlannerTheme === "milk" || savedPlannerTheme === "lavender" || savedPlannerTheme === "sage") setPlannerTheme(savedPlannerTheme);
+    if (savedProfileName) setProfileName(savedProfileName);
+    if (savedProfileColor) setProfileColor(savedProfileColor);
+    if (savedGroups) setJoinedGroupIds(JSON.parse(savedGroups));
   }, []);
 
   useEffect(() => {
@@ -164,6 +187,18 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("timeit-planner-theme", plannerTheme);
   }, [plannerTheme]);
+
+  useEffect(() => {
+    window.localStorage.setItem("timeit-profile-name", profileName);
+  }, [profileName]);
+
+  useEffect(() => {
+    window.localStorage.setItem("timeit-profile-color", profileColor);
+  }, [profileColor]);
+
+  useEffect(() => {
+    window.localStorage.setItem("timeit-joined-groups", JSON.stringify(joinedGroupIds));
+  }, [joinedGroupIds]);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -201,8 +236,6 @@ export default function Home() {
   }, [isRunning]);
 
   const activeSubject = subjects.find((subject) => subject.id === selectedSubject) ?? subjects[0];
-  const completedCount = todos.filter((todo) => todo.done).length;
-  const completion = Math.round((completedCount / todos.length) * 100);
   const totalToday = subjects.reduce((sum, subject) => sum + subject.minutes, 0) + Math.floor(seconds / 60);
   const liveSession = isRunning && sessionStartMinutes !== null && seconds > 0
     ? { id: "live-session", subjectId: selectedSubject, startMinutes: sessionStartMinutes, durationMinutes: Math.max(10, Math.ceil((seconds / 60) / 10) * 10), trackedMinutes: Math.floor(seconds / 60) }
@@ -304,14 +337,8 @@ export default function Home() {
     setIsRunning(true);
   };
 
-  const backupData = () => {
-    const file = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), subjects, todos, studyLogs, plannerTheme }, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `timeit-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const toggleGroup = (groupId: string) => {
+    setJoinedGroupIds((items) => items.includes(groupId) ? items.filter((id) => id !== groupId) : [...items, groupId]);
   };
 
   const changeTimerMode = (mode: "stopwatch" | "pomodoro") => {
@@ -337,10 +364,10 @@ export default function Home() {
   };
 
   return (
-    <main className={`app-shell planner-theme-${plannerTheme} ${isDark ? "dark" : ""} ${isRunning && screen === "timer" ? "focus-active" : ""}`}>
+    <main className={`app-shell planner-theme-${plannerTheme} ${isDark ? "dark" : ""} ${isRunning && screen === "timer" ? "focus-active" : ""}`} style={{ "--profile-color": profileColor } as React.CSSProperties}>
       <section className="phone-frame">
         <header className="topbar">
-          <button className="avatar" aria-label="프로필">서</button>
+          <button className="avatar" aria-label="프로필">{profileName.trim().slice(0, 1) || "나"}</button>
           <div className="brand">timeit<span>°</span></div>
           <button className="round-control" onClick={() => setIsDark((value) => !value)} aria-label="테마 전환">
             <Icon>{isDark ? "☀" : "☾"}</Icon>
@@ -349,16 +376,16 @@ export default function Home() {
 
         <div className="content-scroll">
           {screen === "home" && (
-            <HomeScreen completion={completion} totalToday={totalToday} todos={todos} subjects={subjects} onTimer={goTimer} onNavigate={setScreen} />
+            <HomeScreen totalToday={totalToday} todos={todos} subjects={subjects} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} onTimer={goTimer} onNavigate={setScreen} />
           )}
           {screen === "planner" && (
-            <PlannerScreen plannerMode={plannerMode} setPlannerMode={setPlannerMode} todos={todos} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} onAddStudyLog={addStudyLog} onUpdateStudyLog={updateStudyLog} onDeleteStudyLog={deleteStudyLog} />
+            <PlannerScreen subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} onAddStudyLog={addStudyLog} onUpdateStudyLog={updateStudyLog} onDeleteStudyLog={deleteStudyLog} />
           )}
           {screen === "timer" && (
             <TimerScreen activeSubject={activeSubject} subjects={subjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { setPomodoroPhase((phase) => phase === "집중" ? "휴식" : "집중"); setPomodoroRemaining(pomodoroPhase === "집중" ? 5 * 60 : 25 * 60); }} onReset={resetTimer} savedSession={savedSession} />
           )}
           {screen === "stats" && <StatsScreen subjects={subjects} totalToday={totalToday} donutStyle={donutStyle} />}
-          {screen === "settings" && <SettingsPanel subjects={subjects} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} onBackup={backupData} />}
+          {screen === "settings" && <SettingsPanel subjects={subjects} totalToday={totalToday} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} profileName={profileName} setProfileName={setProfileName} profileColor={profileColor} setProfileColor={setProfileColor} joinedGroupIds={joinedGroupIds} onToggleGroup={toggleGroup} />}
         </div>
 
         <nav className="bottom-nav" aria-label="주요 메뉴">
@@ -379,47 +406,28 @@ export default function Home() {
   );
 }
 
-function HomeScreen({ completion, totalToday, todos, subjects, onTimer, onNavigate }: { completion: number; totalToday: number; todos: Todo[]; subjects: Subject[]; onTimer: (subject?: string) => void; onNavigate: (screen: Screen) => void }) {
-  const remainingTodos = todos.filter((todo) => !todo.done);
+function HomeScreen({ totalToday, todos, subjects, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo, onTimer, onNavigate }: { totalToday: number; todos: Todo[]; subjects: Subject[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void; onTimer: (subject?: string) => void; onNavigate: (screen: Screen) => void }) {
   return <section className="home-v3">
     <div className="home-date-row"><span>2026년 8월 1일 토요일</span><b>D-110</b></div>
-    <section className="home-section home-todo-overview home-todo-center">
-      <div className="home-section-header"><div><span className="section-kicker">TODAY&apos;S PLAN</span><h2>오늘의 할 일 <b>{completion}%</b></h2></div><button onClick={() => onNavigate("planner")}>플래너 →</button></div>
-      <div className="home-todo-list">{remainingTodos.slice(0, 4).map((todo) => { const subject = subjects.find((item) => item.id === todo.subject)!; return <button onClick={() => onNavigate("planner")} key={todo.id}><i style={{ borderColor: subject.color }} /><span>{todo.text}</span><small>{subject.name}</small></button>; })}</div>
-      {remainingTodos.length > 4 && <p className="home-todo-more">할 일 {remainingTodos.length - 4}개가 더 있어요</p>}
-    </section>
     <section className="home-study-bottom">
       <div className="home-study-total"><span>오늘 순공 시간</span><strong>{formatDuration(totalToday * 60)}</strong><button onClick={() => onNavigate("stats")}>통계 →</button></div>
       <div className="home-quick-subjects">{subjects.map((subject) => <button key={subject.id} onClick={() => onTimer(subject.id)}><i style={{ background: subject.color }} /><span>{subject.name}</span><small>{formatMinutes(subject.minutes)}</small><b>▶</b></button>)}</div>
       <button className="home-start-button" onClick={() => onTimer()}><span>▶</span> 지금 집중 시작하기</button>
     </section>
+    <TodoListCard className="home-todo-card" todos={todos} subjects={subjects} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} />
   </section>;
 }
 
-function PlannerScreen({ plannerMode, setPlannerMode, todos, subjects, studyLogs, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { plannerMode: PlannerMode; setPlannerMode: (value: PlannerMode) => void; todos: Todo[]; subjects: Subject[]; studyLogs: StudyLog[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
-  return <>
-    <section className="screen-intro planner-intro"><span className="section-kicker">PLAN YOUR DAY</span><h1>공부가 쌓이는<br /><em>나만의 페이지.</em></h1></section>
-    <div className="segmented-control" role="tablist">
-      {(["daily", "weekly", "monthly"] as PlannerMode[]).map((mode) => <button key={mode} className={plannerMode === mode ? "selected" : ""} onClick={() => setPlannerMode(mode)}>{mode === "daily" ? "일간" : mode === "weekly" ? "주간" : "월간"}</button>)}
-    </div>
-    {plannerMode === "daily" && <DailyPlanner todos={todos} subjects={subjects} studyLogs={studyLogs} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} onAddStudyLog={onAddStudyLog} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} />}
-    {plannerMode === "weekly" && <WeeklyPlanner />}
-    {plannerMode === "monthly" && <MonthlyPlanner />}
-  </>;
+function PlannerScreen({ subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
+  return <section className="planner-only"><TimelineGrid subjects={subjects} studyLogs={studyLogs} onAddStudyLog={onAddStudyLog} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} /></section>;
 }
 
-function DailyPlanner({ todos, subjects, studyLogs, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { todos: Todo[]; subjects: Subject[]; studyLogs: StudyLog[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
-  return <>
-    <section className="date-strip"><button>‹</button><div><span>2026년 8월</span><strong>1 <small>토</small></strong></div><button>›</button></section>
-    <section className="planner-card todo-card">
-      <div className="planner-card-header"><div><span className="section-kicker">MY TO-DO</span><h2>오늘 꼭 해낼 것</h2></div><span className="count-pill">{todos.filter((todo) => todo.done).length}/{todos.length}</span></div>
-      <div className="todo-list">
-        {todos.map((todo) => { const subject = subjects.find((item) => item.id === todo.subject)!; return <button className={`todo-row ${todo.done ? "completed" : ""}`} key={todo.id} onClick={() => toggleTodo(todo.id)}><span className="check-box">✓</span><span className="todo-color" style={{ background: subject.color }} /><span className="todo-copy"><b>{todo.text}</b><small>{subject.name} · {todo.due}</small></span>{todo.priority && <span className="priority">중요</span>}</button>; })}
-      </div>
-      {isAdding ? <div className="add-todo"><select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)}>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select><input autoFocus value={newTodo} onChange={(event) => setNewTodo(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTodo(); }} placeholder="예: 수능특강 2강 풀기" /><button onClick={addTodo}>추가</button></div> : <button className="add-line" onClick={() => setIsAdding(true)}>＋ 오늘의 할 일 추가</button>}
-    </section>
-    <TimelineGrid subjects={subjects} studyLogs={studyLogs} onAddStudyLog={onAddStudyLog} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} />
-  </>;
+function TodoListCard({ className = "", todos, subjects, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo }: { className?: string; todos: Todo[]; subjects: Subject[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void }) {
+  return <section className={`planner-card todo-card ${className}`}>
+    <div className="planner-card-header"><div><span className="section-kicker">MY TO-DO</span><h2>오늘 꼭 해낼 것</h2></div><span className="count-pill">{todos.filter((todo) => todo.done).length}/{todos.length}</span></div>
+    <div className="todo-list">{todos.map((todo) => { const subject = subjects.find((item) => item.id === todo.subject)!; return <button className={`todo-row ${todo.done ? "completed" : ""}`} key={todo.id} onClick={() => toggleTodo(todo.id)}><span className="check-box">✓</span><span className="todo-color" style={{ background: subject.color }} /><span className="todo-copy"><b>{todo.text}</b><small>{subject.name} · {todo.due}</small></span>{todo.priority && <span className="priority">중요</span>}</button>; })}</div>
+    {isAdding ? <div className="add-todo"><select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)}>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select><input autoFocus value={newTodo} onChange={(event) => setNewTodo(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTodo(); }} placeholder="예: 수능특강 2강 풀기" /><button onClick={addTodo}>추가</button></div> : <button className="add-line" onClick={() => setIsAdding(true)}>＋ 오늘의 할 일 추가</button>}
+  </section>;
 }
 
 function TimelineGrid({ subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
@@ -527,8 +535,9 @@ function StatsScreen({ subjects, totalToday, donutStyle }: { subjects: Subject[]
   return <section className="stats-page"><div className="screen-intro"><span className="section-kicker">STUDY INSIGHTS</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div><article className="stats-highlight"><span>이번 주 총 집중</span><strong>16시간 <em>36분</em></strong><p>지난주보다 <b>2시간 14분</b> 더 해냈어요 <span>↗</span></p></article><article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><button>이번 주⌄</button></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(total)}</b><small>누적 공부</small></div></div><div className="donut-legend">{subjects.map((subject) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{Math.round((subject.minutes / total) * 100)}%</b></span>)}</div></div></article><article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">WEEKLY FLOW</span><h2>이번 주 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(totalToday)}</b></div><div className="stats-bars">{week.map(([day, , value]) => <div key={day}><i style={{ height: `${Math.max(Number(value) / 3.2, 3)}%` }} /><span>{day}</span></div>)}</div></article><article className="analytics-card grass-card"><div className="planner-card-header"><div><span className="section-kicker">STUDY GARDEN</span><h2>공부 잔디</h2></div><span className="garden-total">이번 달 21일</span></div><div className="grass-grid grass-hours">{grassHours.map((hours, index) => <span className={`grass-${grassLevel(hours)}`} key={index} title={`${index + 1}일 · ${displayHours(hours)}`}><b>{displayHours(hours)}</b></span>)}</div><div className="grass-legend"><span>적게</span><i className="grass-0" /><i className="grass-1" /><i className="grass-2" /><i className="grass-4" /><span>많이</span></div></article></section>;
 }
 
-function SettingsPanel({ subjects, isDark, setIsDark, plannerTheme, setPlannerTheme, onBackup }: { subjects: Subject[]; isDark: boolean; setIsDark: (value: boolean) => void; plannerTheme: PlannerTheme; setPlannerTheme: (value: PlannerTheme) => void; onBackup: () => void }) {
+function SettingsPanel({ subjects, totalToday, isDark, setIsDark, plannerTheme, setPlannerTheme, profileName, setProfileName, profileColor, setProfileColor, joinedGroupIds, onToggleGroup }: { subjects: Subject[]; totalToday: number; isDark: boolean; setIsDark: (value: boolean) => void; plannerTheme: PlannerTheme; setPlannerTheme: (value: PlannerTheme) => void; profileName: string; setProfileName: (value: string) => void; profileColor: string; setProfileColor: (value: string) => void; joinedGroupIds: string[]; onToggleGroup: (id: string) => void }) {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
+  const [isGroupOpen, setIsGroupOpen] = useState(false);
   const themes: { id: PlannerTheme; label: string; description: string }[] = [
     { id: "milk", label: "밀크티 베이지", description: "따뜻하고 차분한 노트" },
     { id: "lavender", label: "라일락 노트", description: "맑은 보랏빛 포인트" },
@@ -538,9 +547,27 @@ function SettingsPanel({ subjects, isDark, setIsDark, plannerTheme, setPlannerTh
 
   return <section className="settings-page settings-v2">
     <div className="screen-intro"><span className="section-kicker">MY SPACE</span><h1>공부할 공간을<br /><em>가볍게 정리해요.</em></h1></div>
-    <article className="profile-card profile-card-static"><div className="large-avatar">민</div><div><h2>송민영님의 타임잇</h2><p>오늘의 기록을 차분히 쌓아가고 있어요.</p></div></article>
+    <article className="profile-card profile-editor"><div className="large-avatar" style={{ background: profileColor }}>{profileName.trim().slice(0, 1) || "나"}</div><div><h2>{profileName.trim() || "나"}님의 타임잇</h2><p>이름과 프로필 색상은 바로 저장돼요.</p></div><label className="profile-name-field"><span>이름</span><input value={profileName} maxLength={10} onChange={(event) => setProfileName(event.target.value)} aria-label="프로필 이름" /></label><div className="profile-color-row" aria-label="프로필 색상">{["#e5a089", "#8d9bc4", "#7eae99", "#b78aac", "#8b827c"].map((color) => <button className={profileColor === color ? "selected" : ""} onClick={() => setProfileColor(color)} style={{ background: color }} aria-label={`${color} 프로필 색상`} key={color} />)}</div></article>
     <section className="settings-group settings-subjects"><span>과목 관리</span>{subjects.map((subject) => <div className="settings-subject" key={subject.id}><i style={{ background: subject.color }} /><b>{subject.name}</b><small>{formatMinutes(subject.minutes)} 기록됨</small></div>)}</section>
     <section className="settings-group"><span>화면 설정</span><button onClick={() => setIsDark(!isDark)}><i className="theme-icon">{isDark ? "☾" : "☀"}</i><b>다크 모드</b><span className={`toggle ${isDark ? "on" : ""}`}><i /></span></button><button onClick={() => setIsThemeOpen((value) => !value)}><i className="theme-icon">✦</i><b>플래너 테마</b><small>{selectedTheme.label}</small><strong>›</strong></button>{isThemeOpen && <div className="planner-theme-options">{themes.map((theme) => <button key={theme.id} className={plannerTheme === theme.id ? "selected" : ""} onClick={() => { setPlannerTheme(theme.id); setIsThemeOpen(false); }}><i className={`theme-swatch ${theme.id}`} /><span><b>{theme.label}</b><small>{theme.description}</small></span><strong>{plannerTheme === theme.id ? "✓" : ""}</strong></button>)}</div>}</section>
-    <section className="settings-group"><span>내 데이터</span><button onClick={onBackup}><i className="theme-icon">↓</i><b>내 기록 백업하기</b><small>JSON 파일로 저장</small><strong>›</strong></button></section>
+    <section className="settings-group group-settings"><span>스터디 그룹</span><button onClick={() => setIsGroupOpen((value) => !value)}><i className="theme-icon">◉</i><b>함께 집중하기</b><small>{joinedGroupIds.length ? `${joinedGroupIds.length}개 그룹 참여 중` : "그룹을 찾아보세요"}</small><strong>{isGroupOpen ? "⌃" : "›"}</strong></button>{isGroupOpen && <StudyGroupPanel totalToday={totalToday} profileName={profileName} profileColor={profileColor} joinedGroupIds={joinedGroupIds} onToggleGroup={onToggleGroup} />}</section>
+  </section>;
+}
+
+function StudyGroupPanel({ totalToday, profileName, profileColor, joinedGroupIds, onToggleGroup }: { totalToday: number; profileName: string; profileColor: string; joinedGroupIds: string[]; onToggleGroup: (id: string) => void }) {
+  const [tab, setTab] = useState<"mine" | "find">("mine");
+  const [query, setQuery] = useState("");
+  const joinedGroups = studyGroups.filter((group) => joinedGroupIds.includes(group.id));
+  const foundGroups = studyGroups.filter((group) => `${group.name} ${group.category}`.toLowerCase().includes(query.toLowerCase()));
+  const members = [
+    { name: "김민서", minutes: 342, state: "집중 중", color: "#e5a089" },
+    { name: profileName.trim() || "나", minutes: totalToday, state: "집중 중", color: profileColor, self: true },
+    { name: "윤지호", minutes: 274, state: "휴식 중", color: "#8d9bc4" },
+    { name: "이서연", minutes: 231, state: "자리 비움", color: "#7eae99" },
+  ].sort((a, b) => b.minutes - a.minutes);
+
+  return <section className="study-group-panel">
+    <div className="group-tabs" role="tablist"><button className={tab === "mine" ? "selected" : ""} onClick={() => setTab("mine")}>내 그룹</button><button className={tab === "find" ? "selected" : ""} onClick={() => setTab("find")}>그룹 찾기</button></div>
+    {tab === "mine" ? <div className="joined-group-list">{joinedGroups.length ? joinedGroups.map((group) => <article className="joined-group-card" key={group.id}><div className="group-card-top"><i style={{ background: group.accent }} /><div><span>{group.category}</span><h3>{group.name}</h3></div><button onClick={() => onToggleGroup(group.id)}>나가기</button></div><p>{group.description}</p><div className="group-stats"><span>오늘 평균 <b>{formatMinutes(group.averageMinutes)}</b></span><span>참여 <b>{group.members}명</b></span></div><div className="group-ranking">{members.map((member, index) => <div className={member.self ? "self" : ""} key={member.name}><b>{index + 1}</b><i style={{ background: member.color }} /> <span>{member.name}</span><small className={member.state === "집중 중" ? "studying" : ""}>{member.state}</small><strong>{formatMinutes(member.minutes)}</strong></div>)}</div></article>) : <div className="group-empty"><strong>아직 참여 중인 그룹이 없어요.</strong><span>같은 목표를 가진 사람들과 오늘의 집중을 나눠보세요.</span><button onClick={() => setTab("find")}>그룹 찾기</button></div>}</div> : <div className="group-discovery"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="수능, 수학, 자습으로 찾아보기" aria-label="스터디 그룹 검색" />{foundGroups.map((group) => { const joined = joinedGroupIds.includes(group.id); return <article key={group.id}><i style={{ background: group.accent }} /><div><span>{group.category} · {group.members}명</span><h3>{group.name}</h3><p>{group.description}</p></div><button className={joined ? "joined" : ""} onClick={() => onToggleGroup(group.id)}>{joined ? "참여 중" : "가입"}</button></article>})}</div>}
   </section>;
 }
