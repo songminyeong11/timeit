@@ -48,7 +48,13 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /const deleteStudyLog/);
   assert.match(page, /onAddStudyLog=\{addStudyLog\}/);
   assert.match(page, /const recordActiveSubject/);
-  assert.match(page, /if \(isRunning\) recordActiveSubject\(\);\s*setSelectedSubject\(subjectId\);/);
+  assert.match(page, /const commitSession = \(subjectId: string, elapsedSeconds: number, startedAt: number \| null\)/);
+  assert.match(page, /const recorded = isRunning \? commitSession\(selectedSubject, seconds, sessionStartMinutes\) : 0;/);
+  assert.match(page, /setSavedSession\(recorded && previousSubject/);
+  assert.match(page, /<button className="subject-play" onClick=\{\(\) => onChooseSubject\(subject\.id\)\}/);
+  assert.match(page, /onDeleteSubject=\{deleteSubject\}/);
+  assert.match(page, /className="subject-delete-button"/);
+  assert.match(page, /timeit-subjects/);
   assert.match(page, /plannerTheme/);
   assert.doesNotMatch(page, /function StudyGroupPanel/);
   assert.doesNotMatch(page, /수능 D-110 집중방/);

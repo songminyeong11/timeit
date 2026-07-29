@@ -113,19 +113,26 @@ export default function Home() {
     const savedTodos = window.localStorage.getItem("timeit-todos");
     const savedTheme = window.localStorage.getItem("timeit-theme");
     const savedLogs = window.localStorage.getItem("timeit-study-logs");
+    const savedSubjects = window.localStorage.getItem("timeit-subjects");
     const savedSubjectMinutes = window.localStorage.getItem("timeit-subject-minutes");
     const savedPlannerTheme = window.localStorage.getItem("timeit-planner-theme");
     const savedProfileName = window.localStorage.getItem("timeit-profile-name");
     const savedProfileColor = window.localStorage.getItem("timeit-profile-color");
     const storageVersion = window.localStorage.getItem("timeit-storage-version");
     if (storageVersion !== "production-v1") {
-      ["timeit-todos", "timeit-study-logs", "timeit-subject-minutes", "timeit-joined-groups", "timeit-profile-name"].forEach((key) => window.localStorage.removeItem(key));
+      ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-joined-groups", "timeit-profile-name"].forEach((key) => window.localStorage.removeItem(key));
       window.localStorage.setItem("timeit-storage-version", "production-v1");
     }
     if (storageVersion === "production-v1") {
       if (savedTodos) setTodos(JSON.parse(savedTodos));
       if (savedLogs) setStudyLogs(JSON.parse(savedLogs));
-      if (savedSubjectMinutes) {
+      if (savedSubjects) {
+        const parsedSubjects = JSON.parse(savedSubjects) as Subject[];
+        if (parsedSubjects.length) {
+          setSubjects(parsedSubjects);
+          setSelectedSubject((current) => parsedSubjects.some((subject) => subject.id === current) ? current : parsedSubjects[0].id);
+        }
+      } else if (savedSubjectMinutes) {
         const minutes = JSON.parse(savedSubjectMinutes) as Record<string, number>;
         setSubjects((items) => items.map((subject) => typeof minutes[subject.id] === "number" ? { ...subject, minutes: minutes[subject.id] } : subject));
       }
@@ -149,6 +156,7 @@ export default function Home() {
   }, [studyLogs]);
 
   useEffect(() => {
+    window.localStorage.setItem("timeit-subjects", JSON.stringify(subjects));
     window.localStorage.setItem("timeit-subject-minutes", JSON.stringify(Object.fromEntries(subjects.map((subject) => [subject.id, subject.minutes]))));
   }, [subjects]);
 
@@ -236,6 +244,35 @@ export default function Home() {
     setSelectedSubject(id);
   };
 
+  const deleteSubject = (subjectId: string) => {
+    const subject = subjects.find((item) => item.id === subjectId);
+    if (!subject) return;
+    if (subjects.length === 1) {
+      window.alert("타이머를 사용하려면 과목이 하나 이상 필요해요.");
+      return;
+    }
+    const hasRecords = studyLogs.some((log) => log.subjectId === subjectId);
+    const isActiveSubject = selectedSubject === subjectId;
+    const warning = hasRecords || isActiveSubject
+      ? `${subject.name} 과목과 연결된 공부 기록${isActiveSubject && isRunning ? ", 현재 측정 중인 시간" : ""}도 함께 삭제됩니다. 계속할까요?`
+      : `${subject.name} 과목을 삭제할까요?`;
+    if (!window.confirm(warning)) return;
+
+    const fallback = subjects.find((item) => item.id !== subjectId)!;
+    setStudyLogs((items) => items.filter((log) => log.subjectId !== subjectId));
+    setTodos((items) => items.map((todo) => todo.subject === subjectId ? { ...todo, subject: fallback.id } : todo));
+    setSubjects((items) => items.filter((item) => item.id !== subjectId));
+    if (isActiveSubject) {
+      setSelectedSubject(fallback.id);
+      setIsRunning(false);
+      setSeconds(0);
+      setSessionStartMinutes(null);
+      setPomodoroPhase("집중");
+      setPomodoroRemaining(25 * 60);
+      setSavedSession(null);
+    }
+  };
+
   const updateStudyLog = (id: string, next: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => {
     const previous = studyLogs.find((log) => log.id === id);
     if (!previous) return;
@@ -259,21 +296,28 @@ export default function Home() {
     setSubjects((items) => items.map((subject) => subject.id === previous.subjectId ? { ...subject, minutes: Math.max(0, subject.minutes - minutes) } : subject));
   };
 
-  const recordActiveSubject = () => {
-    if (!seconds) {
-      setSessionStartMinutes(null);
-      setPomodoroRemaining(25 * 60);
-      return;
-    }
-    const recorded = Math.max(1, Math.floor(seconds / 60));
+  const commitSession = (subjectId: string, elapsedSeconds: number, startedAt: number | null) => {
+    if (!elapsedSeconds) return 0;
+    const recorded = Math.max(1, Math.floor(elapsedSeconds / 60));
     const gridDuration = Math.max(10, Math.ceil(recorded / 10) * 10);
     const now = new Date();
-    const startMinutes = sessionStartMinutes ?? now.getHours() * 60 + now.getMinutes();
-    addStudyLog({ id: `session-${Date.now()}`, subjectId: selectedSubject, startMinutes, durationMinutes: gridDuration, trackedMinutes: recorded });
+    const startMinutes = startedAt ?? now.getHours() * 60 + now.getMinutes();
+    addStudyLog({ id: `session-${Date.now()}`, subjectId, startMinutes, durationMinutes: gridDuration, trackedMinutes: recorded });
+    return recorded;
+  };
+
+  const recordActiveSubject = () => {
+    const recorded = commitSession(selectedSubject, seconds, sessionStartMinutes);
+    if (!recorded) {
+      setSessionStartMinutes(null);
+      setPomodoroRemaining(25 * 60);
+      return 0;
+    }
     setSavedSession(`${activeSubject.name} ${formatMinutes(recorded)} 기록됨`);
     setSeconds(0);
     setSessionStartMinutes(null);
     setPomodoroRemaining(25 * 60);
+    return recorded;
   };
 
   const saveSession = () => {
@@ -296,15 +340,22 @@ export default function Home() {
 
   const chooseSubject = (subjectId: string) => {
     if (subjectId === selectedSubject) {
-      if (!isRunning) toggleTimer();
+      if (isRunning) saveSession();
+      else toggleTimer();
       return;
     }
+    const previousSubject = subjects.find((subject) => subject.id === selectedSubject);
+    const nextSubject = subjects.find((subject) => subject.id === subjectId);
+    if (!nextSubject) return;
     const now = new Date();
-    if (isRunning) recordActiveSubject();
+    const recorded = isRunning ? commitSession(selectedSubject, seconds, sessionStartMinutes) : 0;
     setSelectedSubject(subjectId);
     setSessionStartMinutes(now.getHours() * 60 + now.getMinutes());
     setSeconds(0);
-    setSavedSession(null);
+    setPomodoroRemaining(25 * 60);
+    setSavedSession(recorded && previousSubject
+      ? `${previousSubject.name} ${formatMinutes(recorded)} 저장 · ${nextSubject.name} 시작`
+      : `${nextSubject.name} 측정 시작`);
     setIsRunning(true);
   };
 
@@ -352,7 +403,7 @@ export default function Home() {
             <TimerScreen activeSubject={activeSubject} subjects={subjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { setPomodoroPhase((phase) => phase === "집중" ? "휴식" : "집중"); setPomodoroRemaining(pomodoroPhase === "집중" ? 5 * 60 : 25 * 60); }} onReset={resetTimer} savedSession={savedSession} />
           )}
           {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} />}
-          {screen === "settings" && <SettingsPanel subjects={subjects} onAddSubject={addSubject} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} profileName={profileName} setProfileName={setProfileName} profileColor={profileColor} setProfileColor={setProfileColor} />}
+          {screen === "settings" && <SettingsPanel subjects={subjects} onAddSubject={addSubject} onDeleteSubject={deleteSubject} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} profileName={profileName} setProfileName={setProfileName} profileColor={profileColor} setProfileColor={setProfileColor} />}
         </div>
 
         <nav className="bottom-nav" aria-label="주요 메뉴">
@@ -478,7 +529,7 @@ function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, sec
       <div className="focus-controls"><button className="timer-reset" onClick={onReset} aria-label="타이머 초기화">↺</button><button className="timer-main" onClick={onToggle}>{isRunning ? "중지" : "집중 시작"}<b>{isRunning ? "■" : "▶"}</b></button></div>
       {timerMode === "pomodoro" && <button className="pomodoro-rule" onClick={onChangePhase}><span>{pomodoroPhase === "집중" ? "25분 집중 중" : "5분 휴식 중"}</span><b>{pomodoroPhase === "집중" ? "휴식으로 전환" : "집중으로 전환"} →</b></button>}
     </section>
-    <section className="subject-timer-list"><div className="subject-list-heading"><div><span className="section-kicker">SUBJECT TIMER</span><h2>과목별 집중 시간</h2></div><span>과목을 눌러 시작</span></div>{subjects.map((subject) => { const isActive = subject.id === selectedSubject; const shownSeconds = isActive ? subject.minutes * 60 + seconds : subject.minutes * 60; return <button key={subject.id} className={`subject-timer-row ${isActive ? "active" : ""}`} onClick={() => onChooseSubject(subject.id)}><span className="subject-token" style={{ background: subject.soft, color: subject.color }}>{subject.short}</span><span className="subject-timer-name"><b>{subject.name}</b><small>{isActive && isRunning ? "현재 측정 중" : "눌러서 집중 시작"}</small></span><strong>{formatDuration(shownSeconds)}</strong><span className="subject-play">{isActive && isRunning ? "Ⅱ" : "▶"}</span></button>; })}</section>
+    <section className="subject-timer-list"><div className="subject-list-heading"><div><span className="section-kicker">SUBJECT TIMER</span><h2>과목별 집중 시간</h2></div><span>한 과목씩 자동 기록</span></div>{subjects.map((subject) => { const isActive = subject.id === selectedSubject; const shownSeconds = isActive ? subject.minutes * 60 + seconds : subject.minutes * 60; return <article key={subject.id} className={`subject-timer-row ${isActive ? "active" : ""}`}><span className="subject-token" style={{ background: subject.soft, color: subject.color }}>{subject.short}</span><span className="subject-timer-name"><b>{subject.name}</b><small>{isActive && isRunning ? "현재 측정 중" : "버튼을 눌러 시작"}</small></span><strong>{formatDuration(shownSeconds)}</strong><button className="subject-play" onClick={() => onChooseSubject(subject.id)} aria-label={`${subject.name} ${isActive && isRunning ? "측정 중지" : "측정 시작"}`}>{isActive && isRunning ? "중지" : "시작"}</button></article>; })}</section>
     {savedSession && <div className="saved-toast">✓ {savedSession}</div>}
   </section>;
 }
@@ -505,8 +556,9 @@ function StatsScreen({ subjects, studyLogs }: { subjects: Subject[]; studyLogs: 
   return <section className="stats-page"><div className="screen-intro"><span className="section-kicker">STUDY INSIGHTS</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div><article className="stats-highlight"><span>{rangeLabel} 총 집중</span><strong>{formatMinutes(periodTotal)}</strong><p>{periodTotal ? <>기록한 시간만 <b>있는 그대로</b> 보여드려요.</> : <>아직 기록이 없어요. <b>타이머를 시작</b>해보세요.</>}</p></article><article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><div className="stats-period" role="tablist"><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>이번 주</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>이번 달</button></div></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(periodTotal)}</b><small>{rangeLabel} 집중</small></div></div><div className="donut-legend">{bySubject.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{periodTotal ? Math.round(minutes / periodTotal * 100) : 0}%</b></span>)}</div></div></article><article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">{range === "week" ? "WEEKLY FLOW" : "MONTHLY FLOW"}</span><h2>{rangeLabel} 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(periodTotal)}</b></div><div className={`stats-bars ${range === "month" ? "month-bars" : ""}`}>{values.map((value, index) => <div key={index}><i style={{ height: `${Math.max(value / maxValue * 100, value ? 3 : 0)}%` }} /><span>{range === "week" ? weekdays[days[index].getDay()] : `${index + 1}주`}</span></div>)}</div></article><article className="analytics-card grass-card"><div className="planner-card-header"><div><span className="section-kicker">STUDY GARDEN</span><h2>공부 잔디</h2></div><span className="garden-total">이번 달 {studiedDays}일</span></div><div className="grass-grid grass-hours">{monthHours.map((hours, index) => <span className={`grass-${grassLevel(hours)}`} key={index} title={`${index + 1}일 · ${displayHours(hours)}`}><b>{displayHours(hours)}</b></span>)}</div><div className="grass-legend"><span>적게</span><i className="grass-0" /><i className="grass-1" /><i className="grass-2" /><i className="grass-4" /><span>많이</span></div></article></section>;
 }
 
-function SettingsPanel({ subjects, onAddSubject, isDark, setIsDark, plannerTheme, setPlannerTheme, profileName, setProfileName, profileColor, setProfileColor }: { subjects: Subject[]; onAddSubject: (name: string) => void; isDark: boolean; setIsDark: (value: boolean) => void; plannerTheme: PlannerTheme; setPlannerTheme: (value: PlannerTheme) => void; profileName: string; setProfileName: (value: string) => void; profileColor: string; setProfileColor: (value: string) => void }) {
+function SettingsPanel({ subjects, onAddSubject, onDeleteSubject, isDark, setIsDark, plannerTheme, setPlannerTheme, profileName, setProfileName, profileColor, setProfileColor }: { subjects: Subject[]; onAddSubject: (name: string) => void; onDeleteSubject: (id: string) => void; isDark: boolean; setIsDark: (value: boolean) => void; plannerTheme: PlannerTheme; setPlannerTheme: (value: PlannerTheme) => void; profileName: string; setProfileName: (value: string) => void; profileColor: string; setProfileColor: (value: string) => void }) {
   const [isProfileEditing, setIsProfileEditing] = useState(false);
+  const [isSubjectEditing, setIsSubjectEditing] = useState(false);
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [subjectName, setSubjectName] = useState("");
   const themes: { id: PlannerTheme; label: string; description: string }[] = [
@@ -519,7 +571,7 @@ function SettingsPanel({ subjects, onAddSubject, isDark, setIsDark, plannerTheme
   return <section className="settings-page settings-v2">
     <div className="screen-intro"><span className="section-kicker">MY SPACE</span><h1>공부할 공간을<br /><em>가볍게 정리해요.</em></h1></div>
     <article className={`profile-card profile-editor ${isProfileEditing ? "editing" : ""}`}><div className="large-avatar" style={{ background: profileColor }}>{profileName.trim().slice(0, 1) || "나"}</div><div><h2>{profileName.trim() ? `${profileName.trim()}님의 타임잇` : "나의 타임잇"}</h2><p>{isProfileEditing ? "이름과 색상을 바꾼 뒤 완료를 눌러주세요." : "나만의 프로필을 설정해보세요."}</p></div><button className="profile-edit-button" onClick={() => setIsProfileEditing((value) => !value)}>{isProfileEditing ? "완료" : "수정"}</button>{isProfileEditing && <><label className="profile-name-field"><span>이름</span><input value={profileName} maxLength={10} onChange={(event) => setProfileName(event.target.value)} aria-label="프로필 이름" /></label><div className="profile-color-row" aria-label="프로필 색상">{["#e5a089", "#8d9bc4", "#7eae99", "#b78aac", "#8b827c"].map((color) => <button className={profileColor === color ? "selected" : ""} onClick={() => setProfileColor(color)} style={{ background: color }} aria-label={`${color} 프로필 색상`} key={color} />)}</div></>}</article>
-    <section className="settings-group settings-subjects"><span>과목 관리</span>{subjects.map((subject) => <div className="settings-subject" key={subject.id}><i style={{ background: subject.color }} /><b>{subject.name}</b><small>{formatMinutes(subject.minutes)} 기록됨</small></div>)}<div className="add-todo"><input value={subjectName} maxLength={12} onChange={(event) => setSubjectName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { onAddSubject(subjectName); setSubjectName(""); } }} placeholder="새 과목 이름" /><button onClick={() => { onAddSubject(subjectName); setSubjectName(""); }}>추가</button></div></section>
+    <section className="settings-group settings-subjects"><div className="settings-subjects-head"><span>과목 관리</span><button onClick={() => setIsSubjectEditing((value) => !value)}>{isSubjectEditing ? "완료" : "수정"}</button></div>{subjects.map((subject) => <div className="settings-subject" key={subject.id}><i style={{ background: subject.color }} /><span className="settings-subject-copy"><b>{subject.name}</b><small>{formatMinutes(subject.minutes)} 기록됨</small></span>{isSubjectEditing && <button className="subject-delete-button" onClick={() => onDeleteSubject(subject.id)} disabled={subjects.length === 1}>삭제</button>}</div>)}<div className="add-todo"><input value={subjectName} maxLength={12} onChange={(event) => setSubjectName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { onAddSubject(subjectName); setSubjectName(""); } }} placeholder="새 과목 이름" /><button onClick={() => { onAddSubject(subjectName); setSubjectName(""); }}>추가</button></div></section>
     <section className="settings-group"><span>화면 설정</span><button onClick={() => setIsDark(!isDark)}><i className="theme-icon">{isDark ? "☾" : "☀"}</i><b>다크 모드</b><span className={`toggle ${isDark ? "on" : ""}`}><i /></span></button><button onClick={() => setIsThemeOpen((value) => !value)}><i className="theme-icon">✦</i><b>플래너 테마</b><small>{selectedTheme.label}</small><strong>›</strong></button>{isThemeOpen && <div className="planner-theme-options">{themes.map((theme) => <button key={theme.id} className={plannerTheme === theme.id ? "selected" : ""} onClick={() => { setPlannerTheme(theme.id); setIsThemeOpen(false); }}><i className={`theme-swatch ${theme.id}`} /><span><b>{theme.label}</b><small>{theme.description}</small></span><strong>{plannerTheme === theme.id ? "✓" : ""}</strong></button>)}</div>}</section>
   </section>;
 }
