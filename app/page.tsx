@@ -40,6 +40,55 @@ const initialSubjects: Subject[] = [
 const initialTodos: Todo[] = [];
 const initialStudyLogs: StudyLog[] = [];
 
+const demoSubjects: Subject[] = [
+  { id: "demo-korean", name: "국어", short: "국", color: "#cf927f", soft: "#f5e4df", minutes: 57 },
+  { id: "demo-math", name: "수학", short: "수", color: "#8d9bc4", soft: "#e5eaf5", minutes: 78 },
+  { id: "demo-english", name: "영어", short: "영", color: "#7eae99", soft: "#dfefe7", minutes: 46 },
+  { id: "demo-inquiry", name: "생명과학", short: "생", color: "#b78aac", soft: "#f1e3ee", minutes: 64 },
+];
+
+const demoTodos: Todo[] = [
+  { id: 101, subject: "demo-korean", text: "문학 기출 3지문 분석", due: "오늘", done: true, priority: true },
+  { id: 102, subject: "demo-math", text: "미적분 수열의 극한 오답 정리", due: "오늘", done: true },
+  { id: 103, subject: "demo-english", text: "영단어 DAY 18 복습", due: "오늘", done: true },
+  { id: 104, subject: "demo-inquiry", text: "유전 단원 개념 노트 완성", due: "오늘", done: false, priority: true },
+  { id: 105, subject: "demo-math", text: "실전 모의고사 21·22번 다시 풀기", due: "오늘", done: false },
+];
+
+function createDemoStudyLogs() {
+  const now = new Date();
+  const today = [
+    { subjectId: "demo-math", startMinutes: 7 * 60 + 40, trackedMinutes: 78 },
+    { subjectId: "demo-korean", startMinutes: 10 * 60 + 10, trackedMinutes: 57 },
+    { subjectId: "demo-english", startMinutes: 14 * 60, trackedMinutes: 46 },
+    { subjectId: "demo-inquiry", startMinutes: 19 * 60 + 20, trackedMinutes: 64 },
+  ].map((session, index) => ({
+    id: `demo-today-${index}`,
+    ...session,
+    durationMinutes: Math.ceil(session.trackedMinutes / 10) * 10,
+    recordedAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), Math.floor(session.startMinutes / 60), session.startMinutes % 60).toISOString(),
+  }));
+  const subjects = ["demo-korean", "demo-math", "demo-english", "demo-inquiry"];
+  const history = Array.from({ length: 27 }, (_, index) => {
+    const daysAgo = index + 1;
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
+    const sessionCount = daysAgo % 6 === 0 ? 2 : 3 + (daysAgo % 2);
+    return Array.from({ length: sessionCount }, (_, sessionIndex) => {
+      const trackedMinutes = 38 + ((daysAgo * 17 + sessionIndex * 23) % 61);
+      const startMinutes = 8 * 60 + sessionIndex * 170 + (daysAgo % 4) * 10;
+      return {
+        id: `demo-${daysAgo}-${sessionIndex}`,
+        subjectId: subjects[(daysAgo + sessionIndex) % subjects.length],
+        startMinutes,
+        durationMinutes: Math.ceil(trackedMinutes / 10) * 10,
+        trackedMinutes,
+        recordedAt: new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(startMinutes / 60), startMinutes % 60).toISOString(),
+      };
+    });
+  }).flat();
+  return [...today, ...history];
+}
+
 function grassLevel(hours: number) {
   if (hours === 0) return 0;
   if (hours < 2) return 1;
@@ -110,6 +159,8 @@ export default function Home() {
   const [profileColor, setProfileColor] = useState("#e5a089");
 
   useEffect(() => {
+    const isDemo = window.location.hostname.split(".")[0] === "timeit-demo";
+    const expectedStorageVersion = isDemo ? "demo-v5" : "production-v1";
     const savedTodos = window.localStorage.getItem("timeit-todos");
     const savedTheme = window.localStorage.getItem("timeit-theme");
     const savedLogs = window.localStorage.getItem("timeit-study-logs");
@@ -119,11 +170,21 @@ export default function Home() {
     const savedProfileName = window.localStorage.getItem("timeit-profile-name");
     const savedProfileColor = window.localStorage.getItem("timeit-profile-color");
     const storageVersion = window.localStorage.getItem("timeit-storage-version");
-    if (storageVersion !== "production-v1") {
+    if (storageVersion !== expectedStorageVersion) {
       ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-joined-groups", "timeit-profile-name"].forEach((key) => window.localStorage.removeItem(key));
-      window.localStorage.setItem("timeit-storage-version", "production-v1");
+      window.localStorage.setItem("timeit-storage-version", expectedStorageVersion);
+      if (isDemo) {
+        setSubjects(demoSubjects);
+        setTodos(demoTodos);
+        setStudyLogs(createDemoStudyLogs());
+        setSelectedSubject("demo-math");
+        setProfileName("민지");
+        setProfileColor("#cf927f");
+        setPlannerTheme("milk");
+        return;
+      }
     }
-    if (storageVersion === "production-v1") {
+    if (storageVersion === expectedStorageVersion) {
       if (savedTodos) setTodos(JSON.parse(savedTodos));
       if (savedLogs) setStudyLogs(JSON.parse(savedLogs));
       if (savedSubjects) {
@@ -139,8 +200,8 @@ export default function Home() {
     }
     if (savedTheme === "dark") setIsDark(true);
     if (savedPlannerTheme === "milk" || savedPlannerTheme === "lavender" || savedPlannerTheme === "sage") setPlannerTheme(savedPlannerTheme);
-    if (storageVersion === "production-v1" && savedProfileName) setProfileName(savedProfileName);
-    if (storageVersion === "production-v1" && savedProfileColor) setProfileColor(savedProfileColor);
+    if (storageVersion === expectedStorageVersion && savedProfileName) setProfileName(savedProfileName);
+    if (storageVersion === expectedStorageVersion && savedProfileColor) setProfileColor(savedProfileColor);
   }, []);
 
   useEffect(() => {

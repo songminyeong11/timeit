@@ -55,6 +55,11 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /onDeleteSubject=\{deleteSubject\}/);
   assert.match(page, /className="subject-delete-button"/);
   assert.match(page, /timeit-subjects/);
+  assert.match(page, /const demoSubjects: Subject\[\]/);
+  assert.match(page, /const demoTodos: Todo\[\]/);
+  assert.match(page, /function createDemoStudyLogs/);
+  assert.match(page, /isDemo \? "demo-v5" : "production-v1"/);
+  assert.match(page, /window\.location\.hostname\.split\("\."\)\[0\] === "timeit-demo"/);
   assert.match(page, /plannerTheme/);
   assert.doesNotMatch(page, /function StudyGroupPanel/);
   assert.doesNotMatch(page, /수능 D-110 집중방/);
