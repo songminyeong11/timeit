@@ -244,11 +244,11 @@ button { border: 0; cursor: pointer; color: inherit; }
 .calendar-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .calendar-title-row .section-kicker { margin: 0 0 4px; }
 .calendar-title-row h2 { margin: 0; font-size: 17px; }
-.calendar-actions { display: flex; gap: 4px; }
-.calendar-import, .calendar-export { padding: 7px 8px; border-radius: 8px; background: #f3efeb; color: #796f6d; font-size: 8px; font-weight: 800; cursor: pointer; transition: all .25s ease; }
-.calendar-export { background: #e9edf2; color: #64768b; }
-.calendar-import:hover, .calendar-export:hover { transform: translateY(-1px); }
-.calendar-import input { display: none; }
+.google-calendar-button { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 7px 9px; border: 1px solid #e5e0dc; border-radius: 9px; background: #fff; color: #5f5b5a; box-shadow: 0 3px 10px rgba(66,55,48,.06); font-size: 8px; font-weight: 800; cursor: pointer; transition: transform .25s ease, border-color .25s ease, background .25s ease; }
+.google-calendar-button svg { width: 12px; height: 12px; color: #6b8e79; }
+.google-calendar-button.connected { border-color: #c9ded2; background: #f2f8f4; color: #4f745e; }
+.google-calendar-button:hover:not(:disabled) { transform: translateY(-1px); border-color: #c9beb7; }
+.google-calendar-button:disabled { cursor: wait; opacity: .56; }
 .calendar-month-nav { display: grid; grid-template-columns: 30px 1fr 30px; align-items: center; margin: 17px 0 11px; }
 .calendar-month-nav button { height: 30px; border-radius: 8px; background: transparent; color: #918a89; font-size: 20px; }
 .calendar-month-nav strong { color: #4e4849; font-size: 13px; text-align: center; }
@@ -270,7 +270,12 @@ button { border: 0; cursor: pointer; color: inherit; }
 .calendar-day-detail li { display: grid; grid-template-columns: 36px 1fr; gap: 7px; color: #5f5959; font-size: 9px; }
 .calendar-day-detail time { color: #b06f60; font-variant-numeric: tabular-nums; }
 .calendar-day-detail p, .calendar-sync-note { margin: 9px 0 0; color: #a19a98; font-size: 8px; line-height: 1.45; }
-.dark .calendar-import, .dark .calendar-export { background: #343b3c; color: #d9d1cb; }
+.calendar-sync-note { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
+.calendar-sync-note span { flex: 1; }
+.calendar-sync-note button { flex: none; padding: 0; color: #9b7e76; font-size: 8px; font-weight: 750; text-decoration: underline; text-underline-offset: 2px; }
+.dark .google-calendar-button { border-color: #434b4b; background: #303737; color: #e4ddda; box-shadow: none; }
+.dark .google-calendar-button svg { color: #98c2a9; }
+.dark .google-calendar-button.connected { border-color: #486458; background: #31433a; color: #c2e0cd; }
 .dark .calendar-month-nav strong { color: #f0eae4; }
 .dark .calendar-day { color: #e7eee9; }
 .dark .calendar-day > i { background: rgba(31,36,36,.72); color: #e4c4ba; }

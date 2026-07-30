@@ -40,7 +40,31 @@ type CalendarSchedule = {
   time?: string;
 };
 
+type GoogleTokenResponse = {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type GoogleTokenClient = {
+  requestAccessToken: (options?: { prompt?: string }) => void;
+};
+
+type GoogleOAuthApi = {
+  initTokenClient: (options: {
+    client_id: string;
+    scope: string;
+    callback: (response: GoogleTokenResponse) => void;
+    error_callback?: (error: { type?: string }) => void;
+  }) => GoogleTokenClient;
+  revoke: (token: string, callback?: () => void) => void;
+};
+
 type PlannerTheme = "milk" | "fog" | "rose";
+
+const GOOGLE_CLIENT_ID = "322831832887-fm9l7tdqbp1qgfd6v52rirbt4b1nmdt6.apps.googleusercontent.com";
+const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+let googleIdentityScriptPromise: Promise<void> | null = null;
 
 const initialSubjects: Subject[] = [
   { id: "focus", name: "공부", short: "공", color: "#8d9bc4", soft: "#e5eaf5", minutes: 0 },
@@ -177,33 +201,103 @@ function loggedMinutes(log: StudyLog) {
   return log.trackedSeconds !== undefined ? log.trackedSeconds / 60 : log.trackedMinutes ?? log.durationMinutes;
 }
 
-function parseCalendarFile(source: string) {
-  const unfolded = source.replace(/\r?\n[ \t]/g, "");
-  return [...unfolded.matchAll(/BEGIN:VEVENT([\s\S]*?)END:VEVENT/g)].flatMap((match, index) => {
-    const block = match[1];
-    const summary = block.match(/(?:^|\r?\n)SUMMARY(?:;[^:]*)?:(.*)/)?.[1]?.trim().replace(/\\,/g, ",").replace(/\\n/g, " ");
-    const start = block.match(/(?:^|\r?\n)DTSTART(?:;[^:]*)?:(\d{8})(?:T(\d{2})(\d{2}))?/) ?? [];
-    if (!summary || !start[1]) return [];
-    const date = `${start[1].slice(0, 4)}-${start[1].slice(4, 6)}-${start[1].slice(6, 8)}`;
-    const time = start[2] ? `${start[2]}:${start[3]}` : undefined;
-    return [{ id: `calendar-${date}-${index}-${summary}`, title: summary, date, time }];
+function googleOAuthApi() {
+  return (window as Window & { google?: { accounts?: { oauth2?: GoogleOAuthApi } } }).google?.accounts?.oauth2;
+}
+
+function loadGoogleIdentityServices() {
+  if (typeof window === "undefined") return Promise.reject(new Error("browser-only"));
+  if (googleOAuthApi()) return Promise.resolve();
+  if (googleIdentityScriptPromise) return googleIdentityScriptPromise;
+  googleIdentityScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+    const script = existing ?? document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      googleIdentityScriptPromise = null;
+      reject(new Error("google-script-load-failed"));
+    };
+    if (!existing) document.head.appendChild(script);
+  });
+  return googleIdentityScriptPromise;
+}
+
+function requestGoogleCalendarToken() {
+  return new Promise<string>((resolve, reject) => {
+    const oauth = googleOAuthApi();
+    if (!oauth) {
+      reject(new Error("google-not-ready"));
+      return;
+    }
+    const client = oauth.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_CALENDAR_SCOPE,
+      callback: (response) => {
+        if (response.access_token) resolve(response.access_token);
+        else reject(new Error(response.error_description || response.error || "google-auth-failed"));
+      },
+      error_callback: () => reject(new Error("google-popup-closed")),
+    });
+    client.requestAccessToken({ prompt: "" });
   });
 }
 
-function calendarDateTime(date: Date) {
-  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}${String(date.getMinutes()).padStart(2, "0")}${String(date.getSeconds()).padStart(2, "0")}`;
+async function fetchGoogleCalendarMonth(accessToken: string, month: Date) {
+  const start = new Date(month.getFullYear(), month.getMonth(), 1);
+  const end = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+  const params = new URLSearchParams({
+    timeMin: start.toISOString(),
+    timeMax: end.toISOString(),
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "250",
+  });
+  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (response.status === 401) throw new Error("google-auth-expired");
+  if (!response.ok) throw new Error("google-calendar-fetch-failed");
+  const payload = await response.json() as {
+    items?: Array<{ id?: string; summary?: string; start?: { date?: string; dateTime?: string } }>;
+  };
+  return (payload.items ?? []).flatMap((event, index) => {
+    const startValue = event.start?.dateTime ?? event.start?.date;
+    if (!startValue) return [];
+    const isAllDay = Boolean(event.start?.date && !event.start?.dateTime);
+    const startDate = isAllDay ? dateFromKey(startValue) : new Date(startValue);
+    if (Number.isNaN(startDate.getTime())) return [];
+    return [{
+      id: event.id ?? `google-${dateKey(startDate)}-${index}`,
+      title: event.summary?.trim() || "제목 없는 일정",
+      date: isAllDay ? startValue : dateKey(startDate),
+      time: isAllDay ? undefined : `${String(startDate.getHours()).padStart(2, "0")}:${String(startDate.getMinutes()).padStart(2, "0")}`,
+    }];
+  });
 }
 
-function createStudyCalendarFile(studyLogs: StudyLog[], subjects: Subject[]) {
-  const events = studyLogs.filter((log) => log.id !== "live-session").map((log) => {
-    const date = dateFromKey(logDateKey(log));
-    date.setHours(Math.floor(log.startMinutes / 60), log.startMinutes % 60, 0, 0);
-    const end = new Date(date.getTime() + Math.max(1, Math.round(loggedMinutes(log) * 60)) * 1000);
-    const subject = subjects.find((item) => item.id === log.subjectId);
-    const summary = `[타임잇] ${subject?.name ?? "공부"}`.replace(/([,;\\])/g, "\\$1");
-    return ["BEGIN:VEVENT", `UID:${log.id}@timeit`, `DTSTART:${calendarDateTime(date)}`, `DTEND:${calendarDateTime(end)}`, `SUMMARY:${summary}`, "END:VEVENT"].join("\r\n");
+async function createGoogleStudyEvent(accessToken: string, log: StudyLog, subject?: Subject) {
+  const start = dateFromKey(logDateKey(log));
+  start.setHours(Math.floor(log.startMinutes / 60), log.startMinutes % 60, 0, 0);
+  const end = new Date(start.getTime() + Math.max(1, Math.round(loggedMinutes(log) * 60)) * 1000);
+  const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      summary: `[타임잇] ${subject?.name ?? "공부"}`,
+      description: `타임잇에서 기록한 순공시간 ${formatMinutes(loggedMinutes(log))}`,
+      start: { dateTime: start.toISOString() },
+      end: { dateTime: end.toISOString() },
+      extendedProperties: { private: { timeitLogId: log.id } },
+    }),
   });
-  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Timeit//Study Calendar//KO", "CALSCALE:GREGORIAN", ...events, "END:VCALENDAR"].join("\r\n");
+  if (response.status === 401) throw new Error("google-auth-expired");
+  if (!response.ok) throw new Error("google-calendar-create-failed");
 }
 
 export default function Home() {
@@ -215,7 +309,7 @@ export default function Home() {
   const [timerMode, setTimerMode] = useState<"stopwatch" | "pomodoro">("stopwatch");
   const [pomodoroPhase, setPomodoroPhase] = useState<"집중" | "휴식">("집중");
   const [seconds, setSeconds] = useState(0);
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [newTodo, setNewTodo] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [savedSession, setSavedSession] = useState<string | null>(null);
@@ -227,6 +321,11 @@ export default function Home() {
   const [profileColor, setProfileColor] = useState("#e5a089");
   const [plannerDate, setPlannerDate] = useState(() => dateKey());
   const [calendarSchedules, setCalendarSchedules] = useState<CalendarSchedule[]>([]);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+  const [googleReady, setGoogleReady] = useState(false);
+  const [googleAuthBusy, setGoogleAuthBusy] = useState(false);
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
+  const [calendarSyncMessage, setCalendarSyncMessage] = useState("Google 캘린더를 연결하면 휴대폰 일정이 여기에 표시돼요.");
 
   useEffect(() => {
     const isDemo = window.location.hostname.split(".")[0] === "timeit-demo";
@@ -239,7 +338,7 @@ export default function Home() {
     const savedPlannerTheme = window.localStorage.getItem("timeit-planner-theme");
     const savedProfileName = window.localStorage.getItem("timeit-profile-name");
     const savedProfileColor = window.localStorage.getItem("timeit-profile-color");
-    const savedCalendarSchedules = window.localStorage.getItem("timeit-calendar-schedules");
+    const lightDefaultApplied = window.localStorage.getItem("timeit-light-default-v1");
     const storageVersion = window.localStorage.getItem("timeit-storage-version");
     if (storageVersion !== expectedStorageVersion) {
       ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-joined-groups", "timeit-profile-name"].forEach((key) => window.localStorage.removeItem(key));
@@ -269,11 +368,17 @@ export default function Home() {
         setSubjects((items) => items.map((subject) => typeof minutes[subject.id] === "number" ? { ...subject, minutes: minutes[subject.id] } : subject));
       }
     }
-    setIsDark(savedTheme !== "light");
+    if (!lightDefaultApplied) {
+      setIsDark(false);
+      window.localStorage.setItem("timeit-theme", "light");
+      window.localStorage.setItem("timeit-light-default-v1", "1");
+    } else {
+      setIsDark(savedTheme === "dark");
+    }
     if (savedPlannerTheme === "milk" || savedPlannerTheme === "fog" || savedPlannerTheme === "rose") setPlannerTheme(savedPlannerTheme);
     if (storageVersion === expectedStorageVersion && savedProfileName) setProfileName(savedProfileName);
     if (storageVersion === expectedStorageVersion && savedProfileColor) setProfileColor(savedProfileColor);
-    if (storageVersion === expectedStorageVersion && savedCalendarSchedules) setCalendarSchedules(JSON.parse(savedCalendarSchedules));
+    window.localStorage.removeItem("timeit-calendar-schedules");
   }, []);
 
   useEffect(() => {
@@ -306,14 +411,17 @@ export default function Home() {
   }, [profileColor]);
 
   useEffect(() => {
-    window.localStorage.setItem("timeit-calendar-schedules", JSON.stringify(calendarSchedules));
-  }, [calendarSchedules]);
-
-
-  useEffect(() => {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    loadGoogleIdentityServices()
+      .then(() => { if (active) setGoogleReady(true); })
+      .catch(() => { if (active) setCalendarSyncMessage("Google 연결 모듈을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -366,6 +474,43 @@ export default function Home() {
     const minutes = loggedMinutes(entry);
     setStudyLogs((items) => [...items, entry]);
     setSubjects((items) => items.map((subject) => subject.id === entry.subjectId ? { ...subject, minutes: subject.minutes + minutes } : subject));
+    if (googleAccessToken) {
+      const subject = subjects.find((item) => item.id === entry.subjectId);
+      void createGoogleStudyEvent(googleAccessToken, entry, subject)
+        .then(() => {
+          setCalendarRefreshKey((value) => value + 1);
+          setCalendarSyncMessage(`${subject?.name ?? "공부"} 기록이 Google 캘린더에도 저장됐어요.`);
+        })
+        .catch((error: Error) => {
+          if (error.message === "google-auth-expired") setGoogleAccessToken(null);
+          setCalendarSyncMessage(error.message === "google-auth-expired"
+            ? "Google 연결 시간이 만료됐어요. 다시 연결해 주세요."
+            : "공부 기록은 저장됐지만 Google 캘린더 반영은 잠시 실패했어요.");
+        });
+    }
+  };
+
+  const connectGoogleCalendar = async () => {
+    if (!googleReady || googleAuthBusy) return;
+    setGoogleAuthBusy(true);
+    setCalendarSyncMessage("Google 계정 연결을 확인하고 있어요.");
+    try {
+      const token = await requestGoogleCalendarToken();
+      setGoogleAccessToken(token);
+      setCalendarRefreshKey((value) => value + 1);
+      setCalendarSyncMessage("Google 캘린더와 연결됐어요. 이번 달 일정을 불러오는 중이에요.");
+    } catch {
+      setCalendarSyncMessage("연결이 완료되지 않았어요. Google 계정 선택 창에서 다시 승인해 주세요.");
+    } finally {
+      setGoogleAuthBusy(false);
+    }
+  };
+
+  const disconnectGoogleCalendar = () => {
+    if (googleAccessToken) googleOAuthApi()?.revoke(googleAccessToken);
+    setGoogleAccessToken(null);
+    setCalendarSchedules([]);
+    setCalendarSyncMessage("Google 캘린더 연결을 해제했어요.");
   };
 
   const addSubject = (name: string) => {
@@ -537,7 +682,7 @@ export default function Home() {
           {screen === "timer" && (
             <TimerScreen activeSubject={activeSubject} subjects={subjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { setPomodoroPhase((phase) => phase === "집중" ? "휴식" : "집중"); setPomodoroRemaining(pomodoroPhase === "집중" ? 5 * 60 : 25 * 60); }} onReset={resetTimer} savedSession={savedSession} />
           )}
-          {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} calendarSchedules={calendarSchedules} setCalendarSchedules={setCalendarSchedules} />}
+          {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} calendarSchedules={calendarSchedules} setCalendarSchedules={setCalendarSchedules} googleAccessToken={googleAccessToken} googleReady={googleReady} googleAuthBusy={googleAuthBusy} calendarRefreshKey={calendarRefreshKey} calendarSyncMessage={calendarSyncMessage} onConnectGoogle={() => void connectGoogleCalendar()} onDisconnectGoogle={disconnectGoogleCalendar} onRefreshGoogle={() => setCalendarRefreshKey((value) => value + 1)} onGoogleAuthExpired={() => { setGoogleAccessToken(null); setCalendarSyncMessage("Google 연결 시간이 만료됐어요. 다시 연결해 주세요."); }} onGoogleSyncMessage={setCalendarSyncMessage} />}
           {screen === "settings" && <SettingsPanel subjects={subjects} onAddSubject={addSubject} onDeleteSubject={deleteSubject} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} profileName={profileName} setProfileName={setProfileName} profileColor={profileColor} setProfileColor={setProfileColor} />}
         </div>
 
@@ -686,10 +831,11 @@ function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, sec
   </section>;
 }
 
-function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedules }: { subjects: Subject[]; studyLogs: StudyLog[]; calendarSchedules: CalendarSchedule[]; setCalendarSchedules: (items: CalendarSchedule[]) => void }) {
+function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedules, googleAccessToken, googleReady, googleAuthBusy, calendarRefreshKey, calendarSyncMessage, onConnectGoogle, onDisconnectGoogle, onRefreshGoogle, onGoogleAuthExpired, onGoogleSyncMessage }: { subjects: Subject[]; studyLogs: StudyLog[]; calendarSchedules: CalendarSchedule[]; setCalendarSchedules: (items: CalendarSchedule[]) => void; googleAccessToken: string | null; googleReady: boolean; googleAuthBusy: boolean; calendarRefreshKey: number; calendarSyncMessage: string; onConnectGoogle: () => void; onDisconnectGoogle: () => void; onRefreshGoogle: () => void; onGoogleAuthExpired: () => void; onGoogleSyncMessage: (message: string) => void }) {
   const [range, setRange] = useState<"week" | "month">("week");
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => dateKey());
+  const [calendarLoading, setCalendarLoading] = useState(false);
   const now = new Date();
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
@@ -721,32 +867,28 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
     setCalendarMonth(next);
     setSelectedCalendarDate(dateKey(next));
   };
-  const importCalendar = async (file?: File) => {
-    if (!file) return;
-    const imported = parseCalendarFile(await file.text());
-    const merged = [...calendarSchedules];
-    imported.forEach((schedule) => {
-      if (!merged.some((item) => item.id === schedule.id)) merged.push(schedule);
-    });
-    setCalendarSchedules(merged);
-  };
-  const sendToPhoneCalendar = async () => {
-    if (!studyLogs.length) {
-      window.alert("휴대폰 캘린더로 보낼 공부 기록이 아직 없어요.");
+
+  useEffect(() => {
+    if (!googleAccessToken) {
+      setCalendarSchedules([]);
       return;
     }
-    const file = new File([createStudyCalendarFile(studyLogs, subjects)], `timeit-study-${dateKey()}.ics`, { type: "text/calendar" });
-    if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file], title: "타임잇 공부 기록" }).catch(() => undefined);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = file.name;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
+    let active = true;
+    setCalendarLoading(true);
+    fetchGoogleCalendarMonth(googleAccessToken, calendarMonth)
+      .then((items) => {
+        if (!active) return;
+        setCalendarSchedules(items);
+        onGoogleSyncMessage("Google 캘린더와 연결됐어요. 일정과 공부 기록을 함께 보여드려요.");
+      })
+      .catch((error: Error) => {
+        if (!active) return;
+        if (error.message === "google-auth-expired") onGoogleAuthExpired();
+        else onGoogleSyncMessage("Google 일정을 불러오지 못했어요. 잠시 후 새로고침해 주세요.");
+      })
+      .finally(() => { if (active) setCalendarLoading(false); });
+    return () => { active = false; };
+  }, [calendarMonth, calendarRefreshKey, googleAccessToken]);
 
   return <section className="stats-page">
     <div className="screen-intro"><span className="section-kicker">STUDY INSIGHTS</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div>
@@ -754,12 +896,12 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
     <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><div className="stats-period" role="tablist"><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>이번 주</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>이번 달</button></div></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(periodTotal)}</b><small>{rangeLabel} 집중</small></div></div><div className="donut-legend">{bySubject.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{periodTotal ? Math.round(minutes / periodTotal * 100) : 0}%</b></span>)}</div></div></article>
     <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">{range === "week" ? "WEEKLY FLOW" : "MONTHLY FLOW"}</span><h2>{rangeLabel} 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(periodTotal)}</b></div><div className={`stats-bars ${range === "month" ? "month-bars" : ""}`}>{values.map((value, index) => <div key={index}><i style={{ height: `${Math.max(value / maxValue * 100, value ? 3 : 0)}%` }} /><span>{range === "week" ? weekdays[days[index].getDay()] : `${index + 1}주`}</span></div>)}</div></article>
     <article className="analytics-card study-calendar-card">
-      <div className="calendar-title-row"><div><span className="section-kicker">STUDY CALENDAR</span><h2>캘린더</h2></div><div className="calendar-actions"><label className="calendar-import">일정 가져오기<input type="file" accept=".ics,text/calendar" onChange={(event) => void importCalendar(event.target.files?.[0])} /></label><button className="calendar-export" onClick={() => void sendToPhoneCalendar()}>폰으로 보내기</button></div></div>
+      <div className="calendar-title-row"><div><span className="section-kicker">STUDY CALENDAR</span><h2>캘린더</h2></div><button className={`google-calendar-button ${googleAccessToken ? "connected" : ""}`} onClick={googleAccessToken ? onRefreshGoogle : onConnectGoogle} disabled={googleAuthBusy || (!googleReady && !googleAccessToken)}><CalendarDays aria-hidden="true" />{googleAuthBusy ? "연결 중" : googleAccessToken ? (calendarLoading ? "동기화 중" : "일정 새로고침") : "Google 캘린더 연결"}</button></div>
       <div className="calendar-month-nav"><button onClick={() => moveCalendarMonth(-1)} aria-label="이전 달">‹</button><strong>{calendarYear}년 {calendarMonthIndex + 1}월</strong><button onClick={() => moveCalendarMonth(1)} aria-label="다음 달">›</button></div>
       <div className="study-calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="study-calendar-grid">{Array.from({ length: calendarLeading }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}{calendarDays.map((item) => <button className={`calendar-day grass-${grassLevel(item.hours)} ${selectedCalendarDate === item.key ? "selected" : ""} ${item.key === dateKey() ? "today" : ""}`} onClick={() => setSelectedCalendarDate(item.key)} key={item.key}><b>{item.day}</b><small>{item.hours ? displayHours(item.hours) : ""}</small>{item.schedules.length > 0 && <i>{item.schedules.length}</i>}</button>)}</div>
-      <div className="calendar-day-detail"><div><span>{selectedCalendarDate.replaceAll("-", ".")}</span><b>{formatMinutes(selectedStudyMinutes)} 집중</b></div>{selectedSchedules.length ? <ul>{selectedSchedules.map((schedule) => <li key={schedule.id}><time>{schedule.time ?? "종일"}</time><span>{schedule.title}</span></li>)}</ul> : <p>가져온 일정이 없어요.</p>}</div>
-      <p className="calendar-sync-note">휴대폰 일정은 가져오고, 타임잇 공부 기록은 휴대폰 캘린더로 보낼 수 있어요.</p>
+      <div className="calendar-day-detail"><div><span>{selectedCalendarDate.replaceAll("-", ".")}</span><b>{formatMinutes(selectedStudyMinutes)} 집중</b></div>{selectedSchedules.length ? <ul>{selectedSchedules.map((schedule) => <li key={schedule.id}><time>{schedule.time ?? "종일"}</time><span>{schedule.title}</span></li>)}</ul> : <p>{googleAccessToken ? "이날 등록된 Google 일정이 없어요." : "Google 캘린더를 연결하면 휴대폰 일정이 보여요."}</p>}</div>
+      <div className="calendar-sync-note"><span>{calendarSyncMessage}</span>{googleAccessToken && <button onClick={onDisconnectGoogle}>연결 해제</button>}</div>
     </article>
   </section>;
 }
