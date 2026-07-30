@@ -122,6 +122,21 @@ type StudyPreferences = {
   reduceMotion: boolean;
 };
 
+type CalendarFeatureProps = {
+  calendarSchedules: CalendarSchedule[];
+  setCalendarSchedules: (items: CalendarSchedule[]) => void;
+  googleAccessToken: string | null;
+  googleReady: boolean;
+  googleAuthBusy: boolean;
+  calendarRefreshKey: number;
+  calendarSyncMessage: string;
+  onConnectGoogle: () => void;
+  onDisconnectGoogle: () => void;
+  onRefreshGoogle: () => void;
+  onGoogleAuthExpired: () => void;
+  onGoogleSyncMessage: (message: string) => void;
+};
+
 type ActiveTimerState = {
   subjectId: string;
   mode: "stopwatch" | "pomodoro";
@@ -839,29 +854,6 @@ export default function Home() {
   }, [isRunning, pomodoroPhase, timerMode]);
 
   useEffect(() => {
-    if (!isRunning || timerMode !== "pomodoro" || pomodoroRemaining !== 0) return;
-    const nextPhase = pomodoroPhase === "집중" ? "휴식" : "집중";
-    if (pomodoroPhase === "집중" && seconds > 0) {
-      const recorded = commitSession(selectedSubject, seconds, sessionStartedAt);
-      if (recorded) setSavedSession(`${activeSubject.name} ${formatMinutes(recorded)} 기록됨`);
-      setSeconds(0);
-    }
-    setPomodoroPhase(nextPhase);
-    setPomodoroRemaining((nextPhase === "집중" ? preferences.focusMinutes : preferences.breakMinutes) * 60);
-    setSessionStartedAt(nextPhase === "집중" && preferences.autoStartNextPhase ? Date.now() : null);
-    if (preferences.timerSound) playTimerTone("complete");
-    if (preferences.completionNotification && "Notification" in window && Notification.permission === "granted") {
-      new Notification(nextPhase === "집중" ? "다시 집중할 시간이에요" : "집중 세션을 마쳤어요", {
-        body: nextPhase === "집중" ? `${preferences.focusMinutes}분 집중을 시작해보세요.` : `${preferences.breakMinutes}분 동안 편하게 쉬어가세요.`,
-      });
-    }
-    if (!preferences.autoStartNextPhase) {
-      setIsRunning(false);
-      lastTickAtRef.current = null;
-    }
-  }, [isRunning, pomodoroPhase, pomodoroRemaining, preferences, timerMode]);
-
-  useEffect(() => {
     let lock: { release: () => Promise<void> } | null = null;
     const wakeLock = (navigator as Navigator & { wakeLock?: { request: (kind: string) => Promise<{ release: () => Promise<void> }> } }).wakeLock;
     if (isRunning && preferences.keepScreenAwake && wakeLock) {
@@ -1171,6 +1163,29 @@ export default function Home() {
     setSavedSession("공부 기록을 모두 정리했어요");
   };
 
+  useEffect(() => {
+    if (!isRunning || timerMode !== "pomodoro" || pomodoroRemaining !== 0) return;
+    const nextPhase = pomodoroPhase === "집중" ? "휴식" : "집중";
+    if (pomodoroPhase === "집중" && seconds > 0) {
+      const recorded = commitSession(selectedSubject, seconds, sessionStartedAt);
+      if (recorded) setSavedSession(`${activeSubject.name} ${formatMinutes(recorded)} 기록됨`);
+      setSeconds(0);
+    }
+    setPomodoroPhase(nextPhase);
+    setPomodoroRemaining((nextPhase === "집중" ? preferences.focusMinutes : preferences.breakMinutes) * 60);
+    setSessionStartedAt(nextPhase === "집중" && preferences.autoStartNextPhase ? Date.now() : null);
+    if (preferences.timerSound) playTimerTone("complete");
+    if (preferences.completionNotification && "Notification" in window && Notification.permission === "granted") {
+      new Notification(nextPhase === "집중" ? "다시 집중할 시간이에요" : "집중 세션을 마쳤어요", {
+        body: nextPhase === "집중" ? `${preferences.focusMinutes}분 집중을 시작해보세요.` : `${preferences.breakMinutes}분 동안 편하게 쉬어가세요.`,
+      });
+    }
+    if (!preferences.autoStartNextPhase) {
+      setIsRunning(false);
+      lastTickAtRef.current = null;
+    }
+  }, [activeSubject.name, commitSession, isRunning, pomodoroPhase, pomodoroRemaining, preferences, seconds, selectedSubject, sessionStartedAt, timerMode]);
+
   const goTimer = (subject = selectedSubject) => {
     setSelectedSubject(subject);
     setScreen("timer");
@@ -1207,12 +1222,12 @@ export default function Home() {
               <HomeScreen totalToday={totalToday} todos={todos} subjects={todaySubjects} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} deleteTodo={deleteTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} onTimer={goTimer} onNavigate={setScreen} />
             )}
             {screen === "planner" && (
-              <PlannerScreen plannerDate={plannerDate} onPlannerDateChange={setPlannerDate} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} onAddStudyLog={addStudyLog} onUpdateStudyLog={updateStudyLog} onDeleteStudyLog={deleteStudyLog} />
+              <PlannerScreen plannerDate={plannerDate} onPlannerDateChange={setPlannerDate} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} onAddStudyLog={addStudyLog} onUpdateStudyLog={updateStudyLog} onDeleteStudyLog={deleteStudyLog} calendarSchedules={calendarSchedules} setCalendarSchedules={setCalendarSchedules} googleAccessToken={googleAccessToken} googleReady={googleReady} googleAuthBusy={googleAuthBusy} calendarRefreshKey={calendarRefreshKey} calendarSyncMessage={calendarSyncMessage} onConnectGoogle={() => void connectGoogleCalendar()} onDisconnectGoogle={disconnectGoogleCalendar} onRefreshGoogle={() => setCalendarRefreshKey((value) => value + 1)} onGoogleAuthExpired={() => { setGoogleAccessToken(null); setCalendarSyncMessage("Google 연결 시간이 만료됐어요. 다시 연결해 주세요."); }} onGoogleSyncMessage={setCalendarSyncMessage} />
             )}
             {screen === "timer" && (
               <TimerScreen activeSubject={activeSubject} subjects={todaySubjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} focusMinutes={preferences.focusMinutes} breakMinutes={preferences.breakMinutes} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { const nextPhase = pomodoroPhase === "집중" ? "휴식" : "집중"; setPomodoroPhase(nextPhase); setPomodoroRemaining((nextPhase === "집중" ? preferences.focusMinutes : preferences.breakMinutes) * 60); }} onReset={resetTimer} onAddSubject={addSubject} onDeleteSubject={deleteSubject} savedSession={savedSession} />
             )}
-            {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} calendarSchedules={calendarSchedules} setCalendarSchedules={setCalendarSchedules} googleAccessToken={googleAccessToken} googleReady={googleReady} googleAuthBusy={googleAuthBusy} calendarRefreshKey={calendarRefreshKey} calendarSyncMessage={calendarSyncMessage} onConnectGoogle={() => void connectGoogleCalendar()} onDisconnectGoogle={disconnectGoogleCalendar} onRefreshGoogle={() => setCalendarRefreshKey((value) => value + 1)} onGoogleAuthExpired={() => { setGoogleAccessToken(null); setCalendarSyncMessage("Google 연결 시간이 만료됐어요. 다시 연결해 주세요."); }} onGoogleSyncMessage={setCalendarSyncMessage} />}
+            {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} />}
             {screen === "group" && <GroupScreen user={authUser} onOpenAccount={() => setIsAuthOpen(true)} />}
             {screen === "settings" && <SettingsPanel user={authUser} profileName={profileName} profileColor={profileColor} onOpenAccount={() => setIsAuthOpen(true)} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} preferences={preferences} onUpdatePreferences={updatePreferences} onToggleNotification={() => void toggleCompletionNotification()} onExportData={exportStudyData} onClearStudyRecords={clearStudyRecords} hasStudyRecords={studyLogs.length > 0} />}
           </div>
@@ -1551,11 +1566,20 @@ function HomeScreen({ totalToday, todos, subjects, selectedSubject, setSelectedS
   </section>;
 }
 
-function PlannerScreen({ plannerDate, onPlannerDateChange, subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { plannerDate: string; onPlannerDateChange: (value: string) => void; subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
+function PlannerScreen({ plannerDate, onPlannerDateChange, subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog, ...calendarProps }: { plannerDate: string; onPlannerDateChange: (value: string) => void; subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void } & CalendarFeatureProps) {
+  const [plannerView, setPlannerView] = useState<"timeline" | "calendar">("timeline");
   const selectedLogs = studyLogs.filter((log) => logDateKey(log) === plannerDate);
   const selectedTotal = selectedLogs.reduce((sum, log) => sum + loggedMinutes(log), 0);
   const addLogForSelectedDate = (log: StudyLog) => onAddStudyLog({ ...log, recordedAt: recordedAtForDate(plannerDate, log.startMinutes) });
-  return <section className="planner-only"><TimelineGrid plannerDate={plannerDate} onPlannerDateChange={onPlannerDateChange} selectedTotal={selectedTotal} subjects={subjects} studyLogs={selectedLogs} onAddStudyLog={addLogForSelectedDate} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} /></section>;
+  return <section className="planner-only">
+    <div className="planner-view-switch" role="tablist" aria-label="플래너 보기">
+      <button className={plannerView === "timeline" ? "selected" : ""} onClick={() => setPlannerView("timeline")}>타임테이블</button>
+      <button className={plannerView === "calendar" ? "selected" : ""} onClick={() => setPlannerView("calendar")}>캘린더</button>
+    </div>
+    {plannerView === "timeline"
+      ? <TimelineGrid plannerDate={plannerDate} onPlannerDateChange={onPlannerDateChange} selectedTotal={selectedTotal} subjects={subjects} studyLogs={selectedLogs} onAddStudyLog={addLogForSelectedDate} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} />
+      : <StudyCalendar subjects={subjects} studyLogs={studyLogs} {...calendarProps} />}
+  </section>;
 }
 
 function TodoListCard({ className = "", todos, subjects, selectedSubject, setSelectedSubject, toggleTodo, deleteTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo }: { className?: string; todos: Todo[]; subjects: Subject[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; deleteTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void }) {
@@ -1692,7 +1716,7 @@ function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, sec
     </section>
     <section className="subject-timer-list">
       <div className="subject-list-heading"><div><span className="section-kicker">SUBJECT TIMER</span><h2>과목별 집중 시간</h2></div><span>오늘 기록 · 한 과목씩 자동 저장</span></div>
-      {subjects.map((subject) => { const isActive = subject.id === selectedSubject; return <article key={subject.id} className={`subject-timer-row ${isActive ? "active" : ""}`}><span className="subject-token" style={{ background: subject.soft, color: subject.color }}>{subject.short}</span><span className="subject-timer-name"><b>{subject.name}</b><small>{isActive && isRunning ? "현재 측정 중" : "버튼을 눌러 시작"}</small></span><strong>{formatDuration(subject.minutes * 60)}</strong>{isManagingSubjects ? <button className="subject-delete-button" onClick={() => onDeleteSubject(subject.id)} disabled={subjects.length === 1}>삭제</button> : <button className="subject-play" onClick={() => onChooseSubject(subject.id)} aria-label={`${subject.name} ${isActive && isRunning ? "측정 중지" : "측정 시작"}`}>{isActive && isRunning ? "중지" : "시작"}</button>}</article>; })}
+      {subjects.map((subject) => { const isActive = subject.id === selectedSubject; return <article key={subject.id} className={`subject-timer-row ${isActive ? "active" : ""}`}><span className="subject-token" style={{ background: subject.color }}>{subject.short}</span><span className="subject-timer-name"><b>{subject.name}</b><small>{isActive && isRunning ? "현재 측정 중" : "버튼을 눌러 시작"}</small></span><strong>{formatDuration(subject.minutes * 60)}</strong>{isManagingSubjects ? <button className="subject-delete-button" onClick={() => onDeleteSubject(subject.id)} disabled={subjects.length === 1}>삭제</button> : <button className="subject-play" onClick={() => onChooseSubject(subject.id)} aria-label={`${subject.name} ${isActive && isRunning ? "측정 중지" : "측정 시작"}`}>{isActive && isRunning ? "중지" : "시작"}</button>}</article>; })}
       <div className="timer-subject-manager">
         <div className="timer-subject-manager-head"><div><b>새 과목 추가</b><small>과목 이름과 기록 색상을 정해보세요.</small></div><button onClick={() => setIsManagingSubjects((value) => !value)}>{isManagingSubjects ? "완료" : "과목 편집"}</button></div>
         <div className="subject-color-picker" aria-label="과목 색상 선택">{subjectPalettes.map((palette) => <button key={palette.color} className={subjectColor === palette.color ? "selected" : ""} style={{ "--subject-picker": palette.color } as React.CSSProperties} onClick={() => setSubjectColor(palette.color)} aria-label={`${palette.color} 색상`} />)}</div>
@@ -1703,24 +1727,103 @@ function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, sec
   </section>;
 }
 
-function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedules, googleAccessToken, googleReady, googleAuthBusy, calendarRefreshKey, calendarSyncMessage, onConnectGoogle, onDisconnectGoogle, onRefreshGoogle, onGoogleAuthExpired, onGoogleSyncMessage }: { subjects: Subject[]; studyLogs: StudyLog[]; calendarSchedules: CalendarSchedule[]; setCalendarSchedules: (items: CalendarSchedule[]) => void; googleAccessToken: string | null; googleReady: boolean; googleAuthBusy: boolean; calendarRefreshKey: number; calendarSyncMessage: string; onConnectGoogle: () => void; onDisconnectGoogle: () => void; onRefreshGoogle: () => void; onGoogleAuthExpired: () => void; onGoogleSyncMessage: (message: string) => void }) {
-  const [range, setRange] = useState<"week" | "month">("week");
-  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => dateKey());
-  const [calendarLoading, setCalendarLoading] = useState(false);
+function StatsScreen({ subjects, studyLogs }: { subjects: Subject[]; studyLogs: StudyLog[] }) {
+  const [range, setRange] = useState<"day" | "week" | "month">("week");
   const now = new Date();
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
-  if (range === "week") start.setDate(start.getDate() - 6);
-  else start.setDate(1);
-  const periodLogs = studyLogs.filter((log) => log.recordedAt && new Date(log.recordedAt) >= start);
+  const previousStart = new Date(start);
+  if (range === "day") previousStart.setDate(previousStart.getDate() - 1);
+  if (range === "week") {
+    start.setDate(start.getDate() - 6);
+    previousStart.setTime(start.getTime());
+    previousStart.setDate(previousStart.getDate() - 7);
+  }
+  if (range === "month") {
+    start.setDate(1);
+    previousStart.setTime(start.getTime());
+    previousStart.setMonth(previousStart.getMonth() - 1);
+  }
+  const previousEnd = new Date(start);
+  const periodLogs = studyLogs.filter((log) => log.recordedAt && new Date(log.recordedAt) >= start && new Date(log.recordedAt) <= now);
+  const previousLogs = studyLogs.filter((log) => log.recordedAt && new Date(log.recordedAt) >= previousStart && new Date(log.recordedAt) < previousEnd);
   const periodTotal = periodLogs.reduce((sum, log) => sum + loggedMinutes(log), 0);
-  const bySubject = subjects.map((subject) => ({ subject, minutes: periodLogs.filter((log) => log.subjectId === subject.id).reduce((sum, log) => sum + loggedMinutes(log), 0) }));
+  const previousTotal = previousLogs.reduce((sum, log) => sum + loggedMinutes(log), 0);
+  const bySubject = subjects
+    .map((subject) => ({ subject, minutes: periodLogs.filter((log) => log.subjectId === subject.id).reduce((sum, log) => sum + loggedMinutes(log), 0) }))
+    .sort((a, b) => b.minutes - a.minutes);
   const donutStyle = periodTotal ? `conic-gradient(${bySubject.reduce<{ items: string[]; point: number }>((state, item) => { const next = state.point + item.minutes / periodTotal * 100; state.items.push(`${item.subject.color} ${state.point}% ${next}%`); state.point = next; return state; }, { items: [], point: 0 }).items.join(", ")})` : "conic-gradient(#e6e7eb 0 100%)";
-  const days = range === "week" ? Array.from({ length: 7 }, (_, index) => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - 6 + index); return date; }) : Array.from({ length: 4 }, (_, index) => { const date = new Date(now.getFullYear(), now.getMonth(), 1 + index * 7); return date; });
-  const values = days.map((date, index) => periodLogs.filter((log) => { const logged = new Date(log.recordedAt!); return range === "week" ? logged.toDateString() === date.toDateString() : Math.floor((logged.getDate() - 1) / 7) === index; }).reduce((sum, log) => sum + loggedMinutes(log), 0));
-  const rangeLabel = range === "week" ? "이번 주" : "이번 달";
+  const days = range === "day"
+    ? Array.from({ length: 6 }, (_, index) => index)
+    : range === "week"
+      ? Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; })
+      : Array.from({ length: Math.max(1, Math.ceil(now.getDate() / 7)) }, (_, index) => index);
+  const values = range === "day"
+    ? days.map((bucket) => periodLogs.filter((log) => Math.floor(log.startMinutes / 240) === bucket).reduce((sum, log) => sum + loggedMinutes(log), 0))
+    : range === "week"
+      ? days.map((date) => periodLogs.filter((log) => logDateKey(log) === dateKey(date as Date)).reduce((sum, log) => sum + loggedMinutes(log), 0))
+      : days.map((weekIndex) => periodLogs.filter((log) => log.recordedAt && Math.floor((new Date(log.recordedAt).getDate() - 1) / 7) === weekIndex).reduce((sum, log) => sum + loggedMinutes(log), 0));
+  const rangeLabel = range === "day" ? "오늘" : range === "week" ? "최근 7일" : "이번 달";
+  const rangeDays = range === "day" ? 1 : range === "week" ? 7 : now.getDate();
+  const activeDateTotals = new Map<string, number>();
+  periodLogs.forEach((log) => activeDateTotals.set(logDateKey(log), (activeDateTotals.get(logDateKey(log)) ?? 0) + loggedMinutes(log)));
+  const activeDays = activeDateTotals.size;
+  const averageMinutes = periodTotal / rangeDays;
+  const bestMinutes = Math.max(0, ...activeDateTotals.values());
+  const longestSession = Math.max(0, ...periodLogs.map(loggedMinutes));
+  const studiedDates = new Set(studyLogs.filter((log) => loggedMinutes(log) > 0).map(logDateKey));
+  const streakCursor = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (!studiedDates.has(dateKey(streakCursor))) streakCursor.setDate(streakCursor.getDate() - 1);
+  let streak = 0;
+  while (studiedDates.has(dateKey(streakCursor))) {
+    streak += 1;
+    streakCursor.setDate(streakCursor.getDate() - 1);
+  }
+  const dayparts = [
+    { label: "새벽", start: 0, end: 6, minutes: 0 },
+    { label: "오전", start: 6, end: 12, minutes: 0 },
+    { label: "오후", start: 12, end: 18, minutes: 0 },
+    { label: "저녁", start: 18, end: 24, minutes: 0 },
+  ];
+  periodLogs.forEach((log) => {
+    const hour = Math.floor(log.startMinutes / 60);
+    const part = dayparts.find((item) => hour >= item.start && hour < item.end);
+    if (part) part.minutes += loggedMinutes(log);
+  });
+  const peakPart = [...dayparts].sort((a, b) => b.minutes - a.minutes)[0];
+  const comparison = previousTotal > 0
+    ? `${previousTotal <= periodTotal ? "+" : ""}${Math.round((periodTotal - previousTotal) / previousTotal * 100)}%`
+    : periodTotal > 0 ? "첫 기록" : "기록 없음";
   const maxValue = Math.max(...values, 1);
+
+  return <section className="stats-page stats-v3">
+    <div className="stats-title-row"><div><span className="section-kicker">STUDY REPORT</span><h1>통계</h1></div><div className="stats-period stats-period-main" role="tablist"><button className={range === "day" ? "selected" : ""} onClick={() => setRange("day")}>오늘</button><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>7일</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>월간</button></div></div>
+    <article className="stats-highlight stats-overview"><span>{rangeLabel} 순공 시간</span><strong>{formatMinutes(periodTotal)}</strong><div><p>{activeDays ? `${activeDays}일 공부 · 하루 평균 ${formatMinutes(averageMinutes)}` : "타이머를 시작하면 분석이 쌓여요."}</p><b className={periodTotal >= previousTotal ? "up" : "down"}>{comparison}</b></div></article>
+    <div className="stats-metric-grid">
+      <article><span>연속 공부</span><strong>{streak}<small>일</small></strong><p>최근 학습 흐름</p></article>
+      <article><span>최고 기록</span><strong>{formatMinutes(bestMinutes)}</strong><p>하루 기준</p></article>
+      <article><span>최장 세션</span><strong>{formatMinutes(longestSession)}</strong><p>{periodLogs.length}회 집중</p></article>
+    </div>
+    <article className="analytics-card stats-flow-card">
+      <div className="planner-card-header"><div><span className="section-kicker">STUDY FLOW</span><h2>{rangeLabel} 학습 흐름</h2></div><b className="soft-strong">{formatMinutes(periodTotal)}</b></div>
+      <div className={`stats-bars stats-bars-${range}`}>{values.map((value, index) => <div key={index}><span className="stats-bar-value">{value ? formatMinutes(value) : ""}</span><i style={{ height: `${Math.max(value / maxValue * 100, value ? 5 : 0)}%` }} /><span>{range === "day" ? `${Number(days[index]) * 4}시` : range === "week" ? weekdays[(days[index] as Date).getDay()] : `${Number(days[index]) + 1}주`}</span></div>)}</div>
+    </article>
+    <article className="analytics-card subject-detail-card">
+      <div className="planner-card-header"><div><span className="section-kicker">SUBJECT REPORT</span><h2>과목별 공부 시간</h2></div><span className="stats-subject-count">{bySubject.filter((item) => item.minutes > 0).length}과목</span></div>
+      <div className="subject-report-layout"><div className="donut compact" style={{ background: donutStyle }}><div><b>{formatMinutes(periodTotal)}</b><small>{rangeLabel}</small></div></div><div className="subject-report-list">{bySubject.map(({ subject, minutes }) => <div key={subject.id}><span><i style={{ background: subject.color }} /><b>{subject.name}</b><small>{periodTotal ? Math.round(minutes / periodTotal * 100) : 0}%</small><strong>{formatMinutes(minutes)}</strong></span><em><i style={{ width: `${periodTotal ? minutes / periodTotal * 100 : 0}%`, background: subject.color }} /></em></div>)}</div></div>
+    </article>
+    <article className="analytics-card study-pattern-card">
+      <div className="planner-card-header"><div><span className="section-kicker">FOCUS PATTERN</span><h2>집중 시간대</h2></div><b className="soft-strong">{periodTotal ? `${peakPart.label} 집중형` : "분석 대기"}</b></div>
+      <div className="daypart-chart">{dayparts.map((part) => <div key={part.label}><span><b>{part.label}</b><small>{part.start}–{part.end}시</small></span><em><i style={{ width: `${periodTotal ? part.minutes / periodTotal * 100 : 0}%` }} /></em><strong>{formatMinutes(part.minutes)}</strong></div>)}</div>
+      <p className="study-pattern-note">{periodTotal ? `${peakPart.label}에 가장 오래 집중했어요. 다음 계획도 이 시간대에 중요한 과목을 배치해보세요.` : "공부 기록이 쌓이면 가장 잘 집중되는 시간대를 알려드려요."}</p>
+    </article>
+  </section>;
+}
+
+function StudyCalendar({ subjects, studyLogs, calendarSchedules, setCalendarSchedules, googleAccessToken, googleReady, googleAuthBusy, calendarRefreshKey, calendarSyncMessage, onConnectGoogle, onDisconnectGoogle, onRefreshGoogle, onGoogleAuthExpired, onGoogleSyncMessage }: { subjects: Subject[]; studyLogs: StudyLog[] } & CalendarFeatureProps) {
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => dateKey());
+  const [calendarLoading, setCalendarLoading] = useState(false);
   const calendarYear = calendarMonth.getFullYear();
   const calendarMonthIndex = calendarMonth.getMonth();
   const calendarDayCount = new Date(calendarYear, calendarMonthIndex + 1, 0).getDate();
@@ -1744,6 +1847,9 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
     ...calendarSchedules.filter((schedule) => schedule.date === selectedCalendarDate),
   ];
   const selectedStudyMinutes = studyLogs.filter((log) => logDateKey(log) === selectedCalendarDate).reduce((sum, log) => sum + loggedMinutes(log), 0);
+  const selectedSubjectMinutes = subjects
+    .map((subject) => ({ subject, minutes: studyLogs.filter((log) => logDateKey(log) === selectedCalendarDate && log.subjectId === subject.id).reduce((sum, log) => sum + loggedMinutes(log), 0) }))
+    .filter((item) => item.minutes > 0);
   const moveCalendarMonth = (amount: number) => {
     const next = new Date(calendarYear, calendarMonthIndex + amount, 1);
     setCalendarMonth(next);
@@ -1772,17 +1878,14 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
     return () => { active = false; };
   }, [calendarMonth, calendarRefreshKey, googleAccessToken]);
 
-  return <section className="stats-page">
-    <div className="screen-intro"><span className="section-kicker">공부 분석</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div>
-    <article className="stats-highlight"><span>{rangeLabel} 총 집중</span><strong>{formatMinutes(periodTotal)}</strong><p>{periodTotal ? <>기록한 시간만 <b>있는 그대로</b> 보여드려요.</> : <>아직 기록이 없어요. <b>타이머를 시작</b>해보세요.</>}</p></article>
-    <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><div className="stats-period" role="tablist"><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>이번 주</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>이번 달</button></div></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(periodTotal)}</b><small>{rangeLabel} 집중</small></div></div><div className="donut-legend">{bySubject.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{periodTotal ? Math.round(minutes / periodTotal * 100) : 0}%</b></span>)}</div></div></article>
-    <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">{range === "week" ? "WEEKLY FLOW" : "MONTHLY FLOW"}</span><h2>{rangeLabel} 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(periodTotal)}</b></div><div className={`stats-bars ${range === "month" ? "month-bars" : ""}`}>{values.map((value, index) => <div key={index}><i style={{ height: `${Math.max(value / maxValue * 100, value ? 3 : 0)}%` }} /><span>{range === "week" ? weekdays[days[index].getDay()] : `${index + 1}주`}</span></div>)}</div></article>
+  return <section className="planner-calendar-view">
+    <div className="planner-calendar-intro"><div><span className="section-kicker">SCHEDULE & RECORD</span><h1>캘린더</h1><p>일정과 공부 기록을 날짜별로 함께 확인하세요.</p></div></div>
     <article className="analytics-card study-calendar-card">
       <div className="calendar-title-row"><div><span className="section-kicker">STUDY CALENDAR</span><h2>캘린더</h2></div><button className={`google-calendar-button ${googleAccessToken ? "connected" : ""}`} onClick={googleAccessToken ? onRefreshGoogle : onConnectGoogle} disabled={googleAuthBusy || (!googleReady && !googleAccessToken)}><CalendarDays aria-hidden="true" />{googleAuthBusy ? "연결 중" : googleAccessToken ? (calendarLoading ? "동기화 중" : "일정 새로고침") : "Google 캘린더 연결"}</button></div>
       <div className="calendar-month-nav"><button onClick={() => moveCalendarMonth(-1)} aria-label="이전 달">‹</button><strong>{calendarYear}년 {calendarMonthIndex + 1}월</strong><button onClick={() => moveCalendarMonth(1)} aria-label="다음 달">›</button></div>
       <div className="study-calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="study-calendar-grid">{Array.from({ length: calendarLeading }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}{calendarDays.map((item) => <button className={`calendar-day grass-${grassLevel(item.hours)} ${item.weekday === 6 ? "saturday" : ""} ${item.isHoliday ? "holiday" : ""} ${selectedCalendarDate === item.key ? "selected" : ""} ${item.key === dateKey() ? "today" : ""}`} onClick={() => setSelectedCalendarDate(item.key)} key={item.key}><b>{item.day}</b><span className="calendar-day-meta">{item.holidays[0] && <small className="holiday-name">{item.holidays[0].name}</small>}{item.hours > 0 && <small>{displayHours(item.hours)}</small>}</span>{item.schedules.length > 0 && <i>{item.schedules.length}</i>}</button>)}</div>
-      <div className="calendar-day-detail"><div><span>{selectedCalendarDate.replaceAll("-", ".")}</span><b>{formatMinutes(selectedStudyMinutes)} 집중</b></div>{selectedSchedules.length ? <ul>{selectedSchedules.map((schedule) => <li className={schedule.kind === "holiday" ? "holiday-schedule" : ""} key={schedule.id}><time>{schedule.kind === "holiday" ? "공휴일" : schedule.time ?? "종일"}</time><span><b>{schedule.title}</b>{schedule.description && <small>{schedule.description}</small>}</span></li>)}</ul> : <p>{googleAccessToken ? "이날 등록된 Google 일정이 없어요." : "Google 캘린더를 연결하면 휴대폰 일정이 보여요."}</p>}</div>
+      <div className="calendar-day-detail"><div><span>{selectedCalendarDate.replaceAll("-", ".")}</span><b>{formatMinutes(selectedStudyMinutes)} 집중</b></div>{selectedSubjectMinutes.length > 0 && <div className="calendar-study-breakdown">{selectedSubjectMinutes.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} /><b>{subject.name}</b><small>{formatMinutes(minutes)}</small></span>)}</div>}{selectedSchedules.length ? <ul>{selectedSchedules.map((schedule) => <li className={schedule.kind === "holiday" ? "holiday-schedule" : ""} key={schedule.id}><time>{schedule.kind === "holiday" ? "공휴일" : schedule.time ?? "종일"}</time><span><b>{schedule.title}</b>{schedule.description && <small>{schedule.description}</small>}</span></li>)}</ul> : <p>{googleAccessToken ? "이날 등록된 Google 일정이 없어요." : "Google 캘린더를 연결하면 휴대폰 일정이 보여요."}</p>}</div>
       <div className="calendar-sync-note"><span>{calendarSyncMessage}</span>{googleAccessToken && <button onClick={onDisconnectGoogle}>연결 해제</button>}</div>
     </article>
   </section>;
