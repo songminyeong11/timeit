@@ -176,7 +176,7 @@ export default function Home() {
   const [timerMode, setTimerMode] = useState<"stopwatch" | "pomodoro">("stopwatch");
   const [pomodoroPhase, setPomodoroPhase] = useState<"집중" | "휴식">("집중");
   const [seconds, setSeconds] = useState(0);
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(true);
   const [newTodo, setNewTodo] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [savedSession, setSavedSession] = useState<string | null>(null);
@@ -228,7 +228,7 @@ export default function Home() {
         setSubjects((items) => items.map((subject) => typeof minutes[subject.id] === "number" ? { ...subject, minutes: minutes[subject.id] } : subject));
       }
     }
-    if (savedTheme === "dark") setIsDark(true);
+    setIsDark(savedTheme !== "light");
     if (savedPlannerTheme === "milk" || savedPlannerTheme === "lavender" || savedPlannerTheme === "sage") setPlannerTheme(savedPlannerTheme);
     if (storageVersion === expectedStorageVersion && savedProfileName) setProfileName(savedProfileName);
     if (storageVersion === expectedStorageVersion && savedProfileColor) setProfileColor(savedProfileColor);
@@ -478,9 +478,7 @@ export default function Home() {
         <header className="topbar">
           <button className="avatar" aria-label="프로필">{profileName.trim().slice(0, 1) || "나"}</button>
           <div className="brand">timeit<span>°</span></div>
-          <button className="round-control" onClick={() => setIsDark((value) => !value)} aria-label="테마 전환">
-            <Icon>{isDark ? "☀" : "☾"}</Icon>
-          </button>
+          <span className="topbar-spacer" aria-hidden="true" />
         </header>
 
         <div className="content-scroll">
@@ -500,10 +498,10 @@ export default function Home() {
         <nav className="bottom-nav" aria-label="주요 메뉴">
           {[
             ["home", "⌂", "홈"],
-            ["planner", "▤", "플래너"],
+            ["planner", "▦", "플래너"],
             ["timer", "◷", "타이머"],
-            ["stats", "◔", "통계"],
-            ["settings", "⚙", "설정"],
+            ["stats", "⌁", "통계"],
+            ["settings", "◌", "설정"],
           ].map(([id, icon, label]) => (
             <button key={id} className={`nav-item ${screen === id ? "active" : ""}`} onClick={() => setScreen(id as Screen)} aria-current={screen === id ? "page" : undefined}>
               <Icon>{icon}</Icon><span>{label}</span>

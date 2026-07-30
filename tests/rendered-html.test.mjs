@@ -42,6 +42,10 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /TodoListCard className="home-todo-card"/);
   assert.match(page, /function PlannerScreen\(\{ plannerDate, onPlannerDateChange, subjects, studyLogs/);
   assert.match(css, /\.bottom-nav \{ position: fixed;/);
+  assert.match(css, /width: min\(calc\(100% - 24px\), 436px\)/);
+  assert.match(page, /const \[isDark, setIsDark\] = useState\(true\)/);
+  assert.match(page, /setIsDark\(savedTheme !== "light"\)/);
+  assert.doesNotMatch(page, /aria-label="테마 전환"/);
   assert.match(css, /\.grass-hours span b/);
   assert.match(css, /\.dark \.home-v3/);
   assert.match(page, /const updateStudyLog/);
@@ -79,6 +83,8 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.timeline-header-side/);
   assert.match(css, /\.timeline-date-nav/);
   assert.match(css, /\.app-shell:not\(\.dark\)\.planner-theme-lavender \{ --paper:/);
+  assert.match(css, /\.dark\.planner-theme-lavender \{ --paper:/);
+  assert.doesNotMatch(css, /\.planner-theme-lavender \.planner-card/);
   assert.match(css, /\.profile-edit-button/);
   assert.match(page, /"중지"/);
 });
