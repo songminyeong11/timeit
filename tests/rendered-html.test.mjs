@@ -94,7 +94,15 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /type="date" value=\{dateDraft\}/);
   assert.match(page, /recordedAtForDate\(plannerDate, log\.startMinutes\)/);
   assert.match(page, /stats-period/);
-  assert.match(page, /isProfileEditing/);
+  assert.match(page, /className="settings-account-card"/);
+  assert.match(page, /function SettingsToggle/);
+  assert.match(page, /다음 세션 자동 시작/);
+  assert.match(page, /공부 중 화면 켜짐 유지/);
+  assert.match(page, /세션 완료 알림/);
+  assert.match(page, /내 기록 내보내기/);
+  assert.match(page, /className="timer-subject-manager"/);
+  assert.match(page, /새 과목 추가/);
+  assert.doesNotMatch(page, /<span>과목 관리<\/span>/);
   assert.match(css, /\.timeline-header-side/);
   assert.match(css, /\.timeline-date-nav/);
   assert.match(css, /\.app-shell:not\(\.dark\)\.planner-theme-fog \{ --paper:/);
