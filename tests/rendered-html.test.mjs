@@ -47,9 +47,9 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /function PlannerScreen\(\{ plannerDate, onPlannerDateChange, subjects, studyLogs/);
   assert.match(css, /\.bottom-nav \{ position: fixed;/);
   assert.match(css, /width: min\(100%, 460px\)/);
-  assert.match(page, /const \[isDark, setIsDark\] = useState\(false\)/);
-  assert.match(page, /timeit-light-default-v1/);
-  assert.match(page, /setIsDark\(savedTheme === "dark"\)/);
+  assert.match(page, /const \[isDark, setIsDark\] = useState\(true\)/);
+  assert.match(page, /timeit-theme-preference-v2/);
+  assert.match(page, /setIsDark\(savedTheme !== "light"\)/);
   assert.doesNotMatch(page, /aria-label="테마 전환"/);
   assert.match(css, /\.grass-hours span b/);
   assert.match(css, /\.dark \.home-v3/);

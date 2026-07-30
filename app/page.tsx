@@ -489,7 +489,7 @@ export default function Home() {
   const [timerMode, setTimerMode] = useState<"stopwatch" | "pomodoro">("stopwatch");
   const [pomodoroPhase, setPomodoroPhase] = useState<"집중" | "휴식">("집중");
   const [seconds, setSeconds] = useState(0);
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(true);
   const [newTodo, setNewTodo] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [savedSession, setSavedSession] = useState<string | null>(null);
@@ -532,7 +532,7 @@ export default function Home() {
     const savedProfileColor = window.localStorage.getItem("timeit-profile-color");
     const savedProfileStatus = window.localStorage.getItem("timeit-profile-status");
     const savedPreferences = safeStoredJson<Partial<StudyPreferences>>(PREFERENCES_KEY);
-    const lightDefaultApplied = window.localStorage.getItem("timeit-light-default-v1");
+    const hasThemePreference = window.localStorage.getItem("timeit-theme-preference-v2");
     const storageVersion = window.localStorage.getItem("timeit-storage-version");
     if (storageVersion !== expectedStorageVersion) {
       ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-joined-groups", "timeit-profile-name", "timeit-profile-color", "timeit-profile-status"].forEach((key) => window.localStorage.removeItem(key));
@@ -561,12 +561,11 @@ export default function Home() {
         setSubjects((items) => items.map((subject) => typeof savedSubjectMinutes[subject.id] === "number" ? { ...subject, minutes: savedSubjectMinutes[subject.id] } : subject));
       }
     }
-    if (!lightDefaultApplied) {
-      setIsDark(false);
-      window.localStorage.setItem("timeit-theme", "light");
-      window.localStorage.setItem("timeit-light-default-v1", "1");
+    if (hasThemePreference) {
+      setIsDark(savedTheme !== "light");
     } else {
-      setIsDark(savedTheme === "dark");
+      setIsDark(true);
+      window.localStorage.setItem("timeit-theme", "dark");
     }
     if (["milk", "fog", "sage", "lilac", "rose"].includes(savedPlannerTheme ?? "")) setPlannerTheme(savedPlannerTheme as PlannerTheme);
     if (storageVersion === expectedStorageVersion && savedProfileName) setProfileName(savedProfileName);
@@ -1174,6 +1173,11 @@ export default function Home() {
     setScreen("timer");
   };
 
+  const setThemePreference = (dark: boolean) => {
+    window.localStorage.setItem("timeit-theme-preference-v2", "1");
+    setIsDark(dark);
+  };
+
   return (
     <main className={`app-shell planner-theme-${plannerTheme} ${isDark ? "dark" : ""} ${preferences.reduceMotion ? "reduce-motion" : ""} ${isRunning && screen === "timer" ? "focus-active" : ""}`} style={{ "--profile-color": profileColor } as React.CSSProperties}>
       <section className="phone-frame">
@@ -1189,7 +1193,7 @@ export default function Home() {
             >
               <CloudOff aria-hidden="true" />
             </button>}
-            <button className="quick-theme-toggle" onClick={() => setIsDark((value) => !value)} aria-label={isDark ? "라이트 모드로 변경" : "다크 모드로 변경"} title={isDark ? "라이트 모드" : "다크 모드"}>
+            <button className="quick-theme-toggle" onClick={() => setThemePreference(!isDark)} aria-label={isDark ? "라이트 모드로 변경" : "다크 모드로 변경"} title={isDark ? "라이트 모드" : "다크 모드"}>
               {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </button>
             <button className="auth-trigger settings-trigger" onClick={() => setScreen("settings")} aria-label="설정 열기" title="설정">
@@ -1212,7 +1216,7 @@ export default function Home() {
             )}
             {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} />}
             {screen === "group" && <GroupScreen user={authUser} onOpenAccount={() => setIsAuthOpen(true)} />}
-            {screen === "settings" && <SettingsPanel user={authUser} profileName={profileName} profileColor={profileColor} onOpenAccount={() => setIsAuthOpen(true)} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} preferences={preferences} onUpdatePreferences={updatePreferences} onToggleNotification={() => void toggleCompletionNotification()} onClearStudyRecords={clearStudyRecords} hasStudyRecords={studyLogs.length > 0} />}
+            {screen === "settings" && <SettingsPanel user={authUser} profileName={profileName} profileColor={profileColor} onOpenAccount={() => setIsAuthOpen(true)} isDark={isDark} setIsDark={setThemePreference} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} preferences={preferences} onUpdatePreferences={updatePreferences} onToggleNotification={() => void toggleCompletionNotification()} onClearStudyRecords={clearStudyRecords} hasStudyRecords={studyLogs.length > 0} />}
           </div>
         </div>
 
