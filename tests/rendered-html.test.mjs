@@ -88,6 +88,9 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.app-shell:not\(\.dark\)\.planner-theme-fog \{ --paper:/);
   assert.match(css, /\.dark\.planner-theme-rose \{ --paper:/);
   assert.match(page, /STUDY CALENDAR/);
+  assert.match(page, /isFixedKoreanHoliday/);
+  assert.match(page, /item\.weekday === 6 \? "saturday"/);
+  assert.match(page, /item\.isHoliday \? "holiday"/);
   assert.match(page, /GOOGLE_CALENDAR_SCOPE/);
   assert.match(page, /loadGoogleIdentityServices/);
   assert.match(page, /requestGoogleCalendarToken/);
@@ -104,5 +107,11 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /className="nav-icon"/);
   assert.doesNotMatch(page, /공부 잔디/);
   assert.match(css, /\.profile-edit-button/);
+  assert.match(css, /\.study-calendar-weekdays span:last-child/);
+  assert.match(css, /\.calendar-day\.saturday b/);
+  assert.match(css, /\.calendar-day\.holiday b/);
+  assert.match(css, /\.calendar-day\.today, \.calendar-day\.today\.selected/);
+  assert.doesNotMatch(css, /\.calendar-day\.today b \{ color:/);
+  assert.match(css, /\.bottom-nav \{ bottom: max\(10px, env\(safe-area-inset-bottom\)\); width: min\(calc\(100% - 24px\), 436px\)/);
   assert.match(page, /"중지"/);
 });

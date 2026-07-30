@@ -64,6 +64,7 @@ type PlannerTheme = "milk" | "fog" | "rose";
 
 const GOOGLE_CLIENT_ID = "322831832887-fm9l7tdqbp1qgfd6v52rirbt4b1nmdt6.apps.googleusercontent.com";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const FIXED_KOREAN_HOLIDAYS = new Set(["01-01", "03-01", "05-05", "06-06", "08-15", "10-03", "10-09", "12-25"]);
 let googleIdentityScriptPromise: Promise<void> | null = null;
 
 const initialSubjects: Subject[] = [
@@ -142,6 +143,11 @@ function todayLabel(date = new Date()) {
 
 function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function isFixedKoreanHoliday(date: Date) {
+  const monthDay = `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return FIXED_KOREAN_HOLIDAYS.has(monthDay);
 }
 
 function dateFromKey(value: string) {
@@ -855,10 +861,12 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
   const calendarLeading = new Date(calendarYear, calendarMonthIndex, 1).getDay();
   const calendarDays = Array.from({ length: calendarDayCount }, (_, index) => {
     const day = index + 1;
-    const key = dateKey(new Date(calendarYear, calendarMonthIndex, day));
+    const date = new Date(calendarYear, calendarMonthIndex, day);
+    const key = dateKey(date);
     const minutes = studyLogs.filter((log) => logDateKey(log) === key).reduce((sum, log) => sum + loggedMinutes(log), 0);
     const schedules = calendarSchedules.filter((schedule) => schedule.date === key);
-    return { day, key, hours: minutes / 60, schedules };
+    const weekday = date.getDay();
+    return { day, key, hours: minutes / 60, schedules, weekday, isHoliday: weekday === 0 || isFixedKoreanHoliday(date) };
   });
   const selectedSchedules = calendarSchedules.filter((schedule) => schedule.date === selectedCalendarDate);
   const selectedStudyMinutes = studyLogs.filter((log) => logDateKey(log) === selectedCalendarDate).reduce((sum, log) => sum + loggedMinutes(log), 0);
@@ -899,7 +907,7 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
       <div className="calendar-title-row"><div><span className="section-kicker">STUDY CALENDAR</span><h2>캘린더</h2></div><button className={`google-calendar-button ${googleAccessToken ? "connected" : ""}`} onClick={googleAccessToken ? onRefreshGoogle : onConnectGoogle} disabled={googleAuthBusy || (!googleReady && !googleAccessToken)}><CalendarDays aria-hidden="true" />{googleAuthBusy ? "연결 중" : googleAccessToken ? (calendarLoading ? "동기화 중" : "일정 새로고침") : "Google 캘린더 연결"}</button></div>
       <div className="calendar-month-nav"><button onClick={() => moveCalendarMonth(-1)} aria-label="이전 달">‹</button><strong>{calendarYear}년 {calendarMonthIndex + 1}월</strong><button onClick={() => moveCalendarMonth(1)} aria-label="다음 달">›</button></div>
       <div className="study-calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
-      <div className="study-calendar-grid">{Array.from({ length: calendarLeading }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}{calendarDays.map((item) => <button className={`calendar-day grass-${grassLevel(item.hours)} ${selectedCalendarDate === item.key ? "selected" : ""} ${item.key === dateKey() ? "today" : ""}`} onClick={() => setSelectedCalendarDate(item.key)} key={item.key}><b>{item.day}</b><small>{item.hours ? displayHours(item.hours) : ""}</small>{item.schedules.length > 0 && <i>{item.schedules.length}</i>}</button>)}</div>
+      <div className="study-calendar-grid">{Array.from({ length: calendarLeading }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}{calendarDays.map((item) => <button className={`calendar-day grass-${grassLevel(item.hours)} ${item.weekday === 6 ? "saturday" : ""} ${item.isHoliday ? "holiday" : ""} ${selectedCalendarDate === item.key ? "selected" : ""} ${item.key === dateKey() ? "today" : ""}`} onClick={() => setSelectedCalendarDate(item.key)} key={item.key}><b>{item.day}</b><small>{item.hours ? displayHours(item.hours) : ""}</small>{item.schedules.length > 0 && <i>{item.schedules.length}</i>}</button>)}</div>
       <div className="calendar-day-detail"><div><span>{selectedCalendarDate.replaceAll("-", ".")}</span><b>{formatMinutes(selectedStudyMinutes)} 집중</b></div>{selectedSchedules.length ? <ul>{selectedSchedules.map((schedule) => <li key={schedule.id}><time>{schedule.time ?? "종일"}</time><span>{schedule.title}</span></li>)}</ul> : <p>{googleAccessToken ? "이날 등록된 Google 일정이 없어요." : "Google 캘린더를 연결하면 휴대폰 일정이 보여요."}</p>}</div>
       <div className="calendar-sync-note"><span>{calendarSyncMessage}</span>{googleAccessToken && <button onClick={onDisconnectGoogle}>연결 해제</button>}</div>
     </article>
