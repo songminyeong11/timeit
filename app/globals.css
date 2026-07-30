@@ -230,8 +230,8 @@ button { border: 0; cursor: pointer; color: inherit; }
 .dark .nav-item.active { background: #473934; color: #ffad95; }
 
 /* A soft floating study dock: compact, readable and comfortable to tap. */
-.bottom-nav { bottom: max(10px, env(safe-area-inset-bottom)); width: min(calc(100% - 24px), 436px); height: calc(66px + env(safe-area-inset-bottom)); padding: 6px 7px calc(6px + env(safe-area-inset-bottom)); border: 1px solid rgba(115,108,105,.12); border-radius: 23px; background: color-mix(in srgb, var(--paper) 92%, transparent); box-shadow: 0 12px 32px rgba(54,48,45,.11), inset 0 1px 0 rgba(255,255,255,.55); backdrop-filter: blur(18px); }
-.nav-item { height: 52px; border-radius: 16px; color: #9b989b; }
+.bottom-nav { bottom: max(10px, env(safe-area-inset-bottom)); width: min(calc(100% - 24px), 436px); height: calc(66px + env(safe-area-inset-bottom)); padding: 6px 7px calc(6px + env(safe-area-inset-bottom)); border: 1px solid rgba(115,108,105,.12); border-radius: 27px; background: color-mix(in srgb, var(--paper) 92%, transparent); box-shadow: 0 12px 32px rgba(54,48,45,.11), inset 0 1px 0 rgba(255,255,255,.55); backdrop-filter: blur(18px); }
+.nav-item { height: 52px; border-radius: 19px; color: #9b989b; }
 .nav-item.active { background: transparent; color: #df806a; transform: none; }
 .nav-icon { width: 20px; height: 20px; transition: transform .25s ease, stroke-width .25s ease; }
 .nav-item.active .nav-icon { transform: scale(1.08); }
@@ -257,21 +257,28 @@ button { border: 0; cursor: pointer; color: inherit; }
 .study-calendar-weekdays span:first-child { color: #cb8275; }
 .study-calendar-weekdays span:last-child { color: #6685b5; }
 .study-calendar-grid { grid-auto-rows: 47px; }
-.calendar-day { position: relative; display: grid; align-content: space-between; justify-items: start; min-width: 0; padding: 5px; border: 1px solid transparent; border-radius: 13px; color: #536058; text-align: left; transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
+.calendar-day { position: relative; display: grid; align-content: space-between; justify-items: start; min-width: 0; padding: 6px; border: 1px solid transparent; border-radius: 16px; color: #536058; text-align: left; transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
 .calendar-day:hover { transform: translateY(-1px); }
 .calendar-day b { font-size: 9px; line-height: 1; }
 .calendar-day small { width: 100%; overflow: hidden; color: inherit; font-size: 7px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; opacity: .82; }
+.calendar-day-meta { display: grid; gap: 2px; width: 100%; min-width: 0; }
+.calendar-day-meta .holiday-name { color: #b94f4e; opacity: 1; }
 .calendar-day > i { position: absolute; top: 4px; right: 4px; min-width: 12px; height: 12px; display: grid; place-items: center; border-radius: 6px; background: rgba(255,255,255,.72); color: #7b6863; font-size: 7px; font-style: normal; font-weight: 850; }
 .calendar-day.saturday b { color: #587daf; }
 .calendar-day.holiday b { color: #c45f5c; }
 .calendar-day.selected { border-color: rgba(103,117,108,.45); box-shadow: inset 0 0 0 1px rgba(103,117,108,.22); }
 .calendar-day.today, .calendar-day.today.selected { border-color: #59625e; box-shadow: inset 0 0 0 1.5px #59625e, 0 3px 9px rgba(56,65,61,.12); }
-.calendar-day-detail { margin-top: 13px; padding: 13px; border: 1px solid #ece7e3; border-radius: 17px; background: #faf8f6; }
+.calendar-day-detail { margin-top: 13px; padding: 14px; border: 1px solid #ece7e3; border-radius: 21px; background: #faf8f6; }
 .calendar-day-detail > div { display: flex; justify-content: space-between; color: #928b89; font-size: 9px; }
 .calendar-day-detail > div b { color: #5f5857; }
 .calendar-day-detail ul { display: grid; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
-.calendar-day-detail li { display: grid; grid-template-columns: 36px 1fr; gap: 7px; color: #5f5959; font-size: 9px; }
+.calendar-day-detail li { display: grid; grid-template-columns: 42px 1fr; gap: 8px; color: #5f5959; font-size: 9px; }
 .calendar-day-detail time { color: #b06f60; font-variant-numeric: tabular-nums; }
+.calendar-day-detail li > span { display: grid; gap: 3px; min-width: 0; }
+.calendar-day-detail li > span > b { color: #514b4b; font-size: 10px; }
+.calendar-day-detail li > span > small { color: #99918e; font-size: 8px; font-weight: 650; line-height: 1.4; }
+.calendar-day-detail li.holiday-schedule { margin: 0 -3px; padding: 8px; border-radius: 13px; background: #fff0ed; }
+.calendar-day-detail li.holiday-schedule time, .calendar-day-detail li.holiday-schedule > span > b { color: #b95250; font-weight: 850; }
 .calendar-day-detail p, .calendar-sync-note { margin: 9px 0 0; color: #a19a98; font-size: 8px; line-height: 1.45; }
 .calendar-sync-note { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
 .calendar-sync-note span { flex: 1; }
@@ -284,16 +291,21 @@ button { border: 0; cursor: pointer; color: inherit; }
 .dark .calendar-day > i { background: rgba(31,36,36,.72); color: #e4c4ba; }
 .dark .calendar-day.saturday b { color: #8fb6eb; }
 .dark .calendar-day.holiday b { color: #f19a96; }
+.dark .calendar-day-meta .holiday-name { color: #f1a09c; }
 .dark .calendar-day.selected { border-color: rgba(192,203,197,.38); box-shadow: inset 0 0 0 1px rgba(192,203,197,.2); }
 .dark .calendar-day.today, .dark .calendar-day.today.selected { border-color: #d3ddd7; box-shadow: inset 0 0 0 1.5px #d3ddd7, 0 3px 10px rgba(0,0,0,.22); }
 .dark .calendar-day-detail { border-color: #3d4545; background: #272e2f; }
 .dark .calendar-day-detail > div, .dark .calendar-day-detail li { color: #d7d0cb; }
 .dark .calendar-day-detail > div b { color: #f3ece6; }
+.dark .calendar-day-detail li > span > b { color: #f3ece6; }
+.dark .calendar-day-detail li > span > small { color: #beb5b0; }
+.dark .calendar-day-detail li.holiday-schedule { background: #453332; }
+.dark .calendar-day-detail li.holiday-schedule time, .dark .calendar-day-detail li.holiday-schedule > span > b { color: #ffaaa2; }
 
 /* Softer geometry keeps the study UI calm without turning every surface into a pill. */
-.planner-card, .weekly-chart-card, .analytics-card, .stats-highlight, .home-study-bottom, .today-focus-card, .focus-console, .profile-card { border-radius: 25px; }
-.google-calendar-button, .calendar-month-nav button, .profile-edit-button, .subject-delete-button, .settings-subjects-head > button { border-radius: 12px; }
-.home-start-button, .today-focus-card button, .timer-main, .focus-controls button, .subject-timer-row.active, .planner-theme-options button, .add-todo input, .add-todo select, .add-todo button { border-radius: 15px; }
+.planner-card, .weekly-chart-card, .analytics-card, .stats-highlight, .home-study-bottom, .today-focus-card, .focus-console, .profile-card { border-radius: 29px; }
+.google-calendar-button, .calendar-month-nav button, .profile-edit-button, .subject-delete-button, .settings-subjects-head > button { border-radius: 14px; }
+.home-start-button, .today-focus-card button, .timer-main, .focus-controls button, .subject-timer-row, .planner-theme-options button, .add-todo input, .add-todo select, .add-todo button { border-radius: 18px; }
 
 @media (max-width: 540px) {
   .bottom-nav { width: calc(100% - 24px); }

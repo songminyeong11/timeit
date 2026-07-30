@@ -88,7 +88,7 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.app-shell:not\(\.dark\)\.planner-theme-fog \{ --paper:/);
   assert.match(css, /\.dark\.planner-theme-rose \{ --paper:/);
   assert.match(page, /STUDY CALENDAR/);
-  assert.match(page, /isFixedKoreanHoliday/);
+  assert.match(page, /getKoreanHolidays/);
   assert.match(page, /item\.weekday === 6 \? "saturday"/);
   assert.match(page, /item\.isHoliday \? "holiday"/);
   assert.match(page, /GOOGLE_CALENDAR_SCOPE/);
@@ -110,8 +110,27 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.study-calendar-weekdays span:last-child/);
   assert.match(css, /\.calendar-day\.saturday b/);
   assert.match(css, /\.calendar-day\.holiday b/);
+  assert.match(css, /\.calendar-day-detail li\.holiday-schedule/);
+  assert.match(page, /schedule\.description/);
   assert.match(css, /\.calendar-day\.today, \.calendar-day\.today\.selected/);
   assert.doesNotMatch(css, /\.calendar-day\.today b \{ color:/);
   assert.match(css, /\.bottom-nav \{ bottom: max\(10px, env\(safe-area-inset-bottom\)\); width: min\(calc\(100% - 24px\), 436px\)/);
   assert.match(page, /"중지"/);
+});
+
+test("calculates Korean public holidays, lunar holidays, and substitute days", async () => {
+  const { getKoreanHolidays } = await import("../app/korean-holidays.ts");
+  const holidays = getKoreanHolidays(2026);
+  const names = (key) => (holidays.get(key) ?? []).map((holiday) => holiday.name);
+
+  assert.deepEqual(names("2026-02-17"), ["설날"]);
+  assert.deepEqual(names("2026-05-01"), ["노동절"]);
+  assert.deepEqual(names("2026-05-24"), ["부처님 오신 날"]);
+  assert.deepEqual(names("2026-05-25"), ["부처님 오신 날 대체공휴일"]);
+  assert.deepEqual(names("2026-06-03"), ["제9회 전국동시지방선거"]);
+  assert.deepEqual(names("2026-07-17"), ["제헌절"]);
+  assert.deepEqual(names("2026-08-17"), ["광복절 대체공휴일"]);
+  assert.deepEqual(names("2026-09-25"), ["추석"]);
+  assert.equal(names("2026-09-28").length, 0);
+  assert.deepEqual(names("2026-10-05"), ["개천절 대체공휴일"]);
 });
