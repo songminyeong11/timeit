@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BarChart3, CalendarDays, Check, CloudOff, House, LoaderCircle, Moon, Settings2, Sun, Timer } from "lucide-react";
+import { BarChart3, CalendarDays, Check, CloudOff, House, LoaderCircle, Moon, Settings2, Sun, Timer, UsersRound } from "lucide-react";
 import { getKoreanHolidays } from "./korean-holidays";
+import { GroupScreen } from "./group-screen";
 
-type Screen = "home" | "planner" | "timer" | "stats" | "settings";
+type Screen = "home" | "planner" | "timer" | "stats" | "group" | "settings";
 
 type Subject = {
   id: string;
@@ -95,6 +96,7 @@ type AuthUser = {
   email: string;
   name: string;
   authProvider?: "password" | "google" | "password+google";
+  birthDate: string | null;
 };
 
 type AccountData = {
@@ -203,6 +205,24 @@ function todayLabel(date = new Date()) {
 
 function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function gradeFromBirthDate(value?: string | null) {
+  if (!value) return null;
+  const birthYear = Number(value.slice(0, 4));
+  const now = new Date();
+  const academicYear = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
+  const gradeIndex = academicYear - birthYear - 6;
+  if (gradeIndex >= 1 && gradeIndex <= 6) return `초등학교 ${gradeIndex}학년`;
+  if (gradeIndex >= 7 && gradeIndex <= 9) return `중학교 ${gradeIndex - 6}학년`;
+  if (gradeIndex >= 10 && gradeIndex <= 12) return `고등학교 ${gradeIndex - 9}학년`;
+  return "대학생·일반";
+}
+
+function maximumBirthDate() {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - 7);
+  return dateKey(date);
 }
 
 function dateFromKey(value: string) {
@@ -420,6 +440,7 @@ export default function Home() {
   const [syncRetryKey, setSyncRetryKey] = useState(0);
   const lastTickAtRef = useRef<number | null>(null);
   const snapshotRef = useRef<AccountData | null>(null);
+  const elapsedSecondsRef = useRef(0);
 
   useEffect(() => {
     const isDemo = window.location.hostname.split(".")[0] === "timeit-demo";
@@ -762,6 +783,31 @@ export default function Home() {
   }, [isRunning]);
 
   const activeSubject = subjects.find((subject) => subject.id === selectedSubject) ?? subjects[0];
+
+  useEffect(() => {
+    elapsedSecondsRef.current = seconds;
+  }, [seconds]);
+
+  useEffect(() => {
+    if (!authUser || !activeSubject) return;
+    const updatePresence = (active: boolean) => fetch("/api/groups/presence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        active,
+        subjectName: activeSubject.name,
+        elapsedSeconds: elapsedSecondsRef.current,
+      }),
+      keepalive: true,
+    }).catch(() => undefined);
+    void updatePresence(isRunning);
+    if (!isRunning) return;
+    const timer = window.setInterval(() => void updatePresence(true), 30_000);
+    return () => {
+      window.clearInterval(timer);
+      void updatePresence(false);
+    };
+  }, [activeSubject, authUser, isRunning]);
   const todaySubjectMinutes = minutesBySubject(studyLogs, subjects, dateKey());
   const allTimeSubjectMinutes = minutesBySubject(studyLogs, subjects);
   const isCurrentSessionToday = sessionStartedAt !== null && dateKey(new Date(sessionStartedAt)) === dateKey();
@@ -1003,8 +1049,8 @@ export default function Home() {
             <button className="quick-theme-toggle" onClick={() => setIsDark((value) => !value)} aria-label={isDark ? "라이트 모드로 변경" : "다크 모드로 변경"} title={isDark ? "라이트 모드" : "다크 모드"}>
               {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </button>
-            <button className={`auth-trigger ${authUser ? "signed-in" : ""}`} onClick={() => setIsAuthOpen(true)} disabled={!authReady} aria-label={authUser ? "내 계정 열기" : "로그인 및 회원가입"}>
-              {authUser ? <><i>{authUser.name.slice(0, 1)}</i><span>내 계정</span></> : "로그인"}
+            <button className={`auth-trigger ${authUser ? "settings-trigger" : ""}`} onClick={() => authUser ? setScreen("settings") : setIsAuthOpen(true)} disabled={!authReady} aria-label={authUser ? "설정 열기" : "로그인 및 회원가입"}>
+              {authUser ? <><Settings2 aria-hidden="true" /><span>설정</span></> : "로그인"}
             </button>
           </div>
         </header>
@@ -1021,6 +1067,7 @@ export default function Home() {
               <TimerScreen activeSubject={activeSubject} subjects={todaySubjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { setPomodoroPhase((phase) => phase === "집중" ? "휴식" : "집중"); setPomodoroRemaining(pomodoroPhase === "집중" ? 5 * 60 : 25 * 60); }} onReset={resetTimer} savedSession={savedSession} />
             )}
             {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} calendarSchedules={calendarSchedules} setCalendarSchedules={setCalendarSchedules} googleAccessToken={googleAccessToken} googleReady={googleReady} googleAuthBusy={googleAuthBusy} calendarRefreshKey={calendarRefreshKey} calendarSyncMessage={calendarSyncMessage} onConnectGoogle={() => void connectGoogleCalendar()} onDisconnectGoogle={disconnectGoogleCalendar} onRefreshGoogle={() => setCalendarRefreshKey((value) => value + 1)} onGoogleAuthExpired={() => { setGoogleAccessToken(null); setCalendarSyncMessage("Google 연결 시간이 만료됐어요. 다시 연결해 주세요."); }} onGoogleSyncMessage={setCalendarSyncMessage} />}
+            {screen === "group" && <GroupScreen user={authUser} onOpenAccount={() => setIsAuthOpen(true)} />}
             {screen === "settings" && <SettingsPanel subjects={settingsSubjects} onAddSubject={addSubject} onDeleteSubject={deleteSubject} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} profileName={profileName} setProfileName={setProfileName} profileColor={profileColor} setProfileColor={setProfileColor} />}
           </div>
         </div>
@@ -1031,7 +1078,7 @@ export default function Home() {
             { id: "stats" as Screen, icon: BarChart3, label: "통계" },
             { id: "timer" as Screen, icon: Timer, label: "타이머" },
             { id: "planner" as Screen, icon: CalendarDays, label: "플래너" },
-            { id: "settings" as Screen, icon: Settings2, label: "설정" },
+            { id: "group" as Screen, icon: UsersRound, label: "그룹" },
           ].map(({ id, icon: NavIcon, label }) => (
             <button key={id} className={`nav-item ${screen === id ? "active" : ""}`} onClick={() => setScreen(id)} aria-current={screen === id ? "page" : undefined}>
               <NavIcon className="nav-icon" strokeWidth={screen === id ? 2.35 : 1.85} aria-hidden="true" /><span>{label}</span>
@@ -1056,6 +1103,7 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
 }) {
   const [mode, setMode] = useState<"login" | "signup" | "reset">("login");
   const [name, setName] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [recoveryInput, setRecoveryInput] = useState("");
@@ -1068,6 +1116,7 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
   const [draftName, setDraftName] = useState(profileName || user?.name || "");
   const [draftStatus, setDraftStatus] = useState(profileStatus);
   const [draftColor, setDraftColor] = useState(profileColor);
+  const [draftBirthDate, setDraftBirthDate] = useState(user?.birthDate ?? "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [accountMessage, setAccountMessage] = useState("");
@@ -1174,7 +1223,7 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
       const response = await fetch(`/api/auth/${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mode === "reset" ? { email, recoveryCode: recoveryInput, password } : { name, email, password }),
+        body: JSON.stringify(mode === "reset" ? { email, recoveryCode: recoveryInput, password } : { name, email, password, birthDate }),
       });
       const payload = await response.json() as { user?: AuthUser; recoveryCode?: string; ok?: boolean; error?: string };
       if (!response.ok) throw new Error(payload.error || "요청을 완료하지 못했어요.");
@@ -1205,7 +1254,7 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
       const response = await fetch("/api/account/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: draftName }),
+        body: JSON.stringify({ name: draftName, birthDate: draftBirthDate }),
       });
       const payload = await response.json() as { user?: AuthUser; error?: string };
       if (!response.ok || !payload.user) throw new Error(payload.error || "프로필을 저장하지 못했어요.");
@@ -1267,14 +1316,15 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
     <section ref={dialogRef} className={`auth-dialog ${user ? "account-dialog" : ""}`} role="dialog" aria-modal="true" aria-labelledby="auth-title">
       <button className="auth-close" onClick={onClose} aria-label="닫기">×</button>
       {user ? <>
-        <div className="account-sheet-head"><span className="section-kicker">MY ACCOUNT</span><h2 id="auth-title">계정 정보</h2><p>내 프로필과 로그인 정보를 관리해요.</p></div>
+        <div className="account-sheet-head"><span className="section-kicker">내 계정</span><h2 id="auth-title">계정 정보</h2><p>내 프로필과 로그인 정보를 관리해요.</p></div>
         <div className="account-identity">
           <div className="account-avatar" style={{ background: draftColor }}>{draftName.trim().slice(0, 1) || "나"}</div>
-          <div><strong>{draftName || user.name}</strong><small>{user.email}</small><span>{draftStatus || "상태 메시지를 설정해보세요."}</span></div>
+          <div><strong>{draftName || user.name}</strong><small>{user.email}</small><span>{gradeFromBirthDate(draftBirthDate) || draftStatus || "생년월일을 입력해 학년 그룹을 만나보세요."}</span></div>
           <button onClick={() => { setAccountEditing((value) => !value); setAccountMessage(""); }}>{accountEditing ? "취소" : "수정"}</button>
         </div>
         {accountEditing && <div className="account-edit-panel">
           <label><span>이름</span><input value={draftName} onChange={(event) => setDraftName(event.target.value)} minLength={2} maxLength={24} /></label>
+          <label><span>생년월일</span><input type="date" value={draftBirthDate} onChange={(event) => setDraftBirthDate(event.target.value)} min="1940-01-01" max={maximumBirthDate()} required /></label>
           <label><span>상태 메시지</span><input value={draftStatus} onChange={(event) => setDraftStatus(event.target.value)} maxLength={40} placeholder="예: 오늘도 한 걸음씩" /></label>
           <div className="account-color-picker"><span>프로필 색상</span><div>{["#e5a089", "#8d9bc4", "#7eae99", "#b78aac", "#8b827c"].map((color) => <button type="button" className={draftColor === color ? "selected" : ""} onClick={() => setDraftColor(color)} style={{ background: color }} aria-label={`${color} 프로필 색상`} key={color} />)}</div></div>
           <button className="account-save-button" onClick={() => void saveProfile()} disabled={busy}>변경사항 저장</button>
@@ -1300,7 +1350,7 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
         <button className="account-logout-button" onClick={() => void onLogout()}>로그아웃</button>
       </> : <>
         {recoveryCode ? <>
-          <span className="section-kicker">RECOVERY KEY</span>
+          <span className="section-kicker">계정 복구</span>
           <h2 id="auth-title">{pendingUser ? "복구 코드를 저장해 주세요" : "비밀번호가 변경됐어요"}</h2>
           <p className="auth-description">이 코드는 다시 표시되지 않습니다. 안전한 곳에 보관해 주세요.</p>
           <RecoveryCodeCard code={recoveryCode} />
@@ -1319,6 +1369,7 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
           </div>}
           <form className="auth-form" onSubmit={submit}>
             {mode === "signup" && <label><span>이름</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="사용할 이름" minLength={2} maxLength={24} autoFocus required /></label>}
+            {mode === "signup" && <label><span>생년월일</span><input type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} min="1940-01-01" max={maximumBirthDate()} required /><small className="birthdate-help">현재 학년에 맞는 그룹을 추천하는 데 사용해요.</small></label>}
             <label><span>이메일</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@example.com" autoFocus={mode !== "signup"} required /></label>
             {mode === "reset" && <label><span>복구 코드</span><input value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value.toUpperCase())} autoComplete="off" placeholder="XXXX-XXXX-XXXX-XXXX" required /></label>}
             <label><span>{mode === "reset" ? "새 비밀번호" : "비밀번호"}</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상" minLength={8} maxLength={128} required /></label>
@@ -1363,7 +1414,7 @@ function PlannerScreen({ plannerDate, onPlannerDateChange, subjects, studyLogs, 
 
 function TodoListCard({ className = "", todos, subjects, selectedSubject, setSelectedSubject, toggleTodo, deleteTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo }: { className?: string; todos: Todo[]; subjects: Subject[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; deleteTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void }) {
   return <section className={`planner-card todo-card ${className}`}>
-    <div className="planner-card-header"><div><span className="section-kicker">MY TO-DO</span><h2>오늘 꼭 해낼 것</h2></div><span className="count-pill">{todos.filter((todo) => todo.done).length}/{todos.length}</span></div>
+    <div className="planner-card-header"><div><span className="section-kicker">오늘의 할 일</span><h2>오늘 꼭 해낼 것</h2></div><span className="count-pill">{todos.filter((todo) => todo.done).length}/{todos.length}</span></div>
     <div className="todo-list">{todos.length ? todos.map((todo) => { const subject = subjects.find((item) => item.id === todo.subject) ?? subjects[0]; return <article className={`todo-row ${todo.done ? "completed" : ""}`} key={todo.id}><button className="todo-toggle" onClick={() => toggleTodo(todo.id)} aria-label={`${todo.text} ${todo.done ? "미완료로 변경" : "완료로 변경"}`}><span className="check-box">✓</span><span className="todo-color" style={{ background: subject.color }} /><span className="todo-copy"><b>{todo.text}</b><small>{subject.name} · {todo.due}</small></span>{todo.priority && <span className="priority">중요</span>}</button><button className="todo-delete" onClick={() => deleteTodo(todo.id)} aria-label={`${todo.text} 삭제`}>×</button></article>; }) : <div className="todo-empty"><b>오늘 할 일을 적어보세요.</b><span>작은 계획 하나부터 시작하면 충분해요.</span></div>}</div>
     {isAdding ? <div className="add-todo"><select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)}>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select><input autoFocus value={newTodo} onChange={(event) => setNewTodo(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTodo(); }} placeholder="예: 수능특강 2강 풀기" /><button onClick={addTodo}>추가</button></div> : <button className="add-line" onClick={() => setIsAdding(true)}>＋ 오늘의 할 일 추가</button>}
   </section>;
@@ -1559,7 +1610,7 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
   }, [calendarMonth, calendarRefreshKey, googleAccessToken]);
 
   return <section className="stats-page">
-    <div className="screen-intro"><span className="section-kicker">STUDY INSIGHTS</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div>
+    <div className="screen-intro"><span className="section-kicker">공부 분석</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div>
     <article className="stats-highlight"><span>{rangeLabel} 총 집중</span><strong>{formatMinutes(periodTotal)}</strong><p>{periodTotal ? <>기록한 시간만 <b>있는 그대로</b> 보여드려요.</> : <>아직 기록이 없어요. <b>타이머를 시작</b>해보세요.</>}</p></article>
     <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><div className="stats-period" role="tablist"><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>이번 주</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>이번 달</button></div></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(periodTotal)}</b><small>{rangeLabel} 집중</small></div></div><div className="donut-legend">{bySubject.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{periodTotal ? Math.round(minutes / periodTotal * 100) : 0}%</b></span>)}</div></div></article>
     <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">{range === "week" ? "WEEKLY FLOW" : "MONTHLY FLOW"}</span><h2>{rangeLabel} 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(periodTotal)}</b></div><div className={`stats-bars ${range === "month" ? "month-bars" : ""}`}>{values.map((value, index) => <div key={index}><i style={{ height: `${Math.max(value / maxValue * 100, value ? 3 : 0)}%` }} /><span>{range === "week" ? weekdays[days[index].getDay()] : `${index + 1}주`}</span></div>)}</div></article>
@@ -1587,7 +1638,7 @@ function SettingsPanel({ subjects, onAddSubject, onDeleteSubject, isDark, setIsD
   const selectedTheme = themes.find((theme) => theme.id === plannerTheme)!;
 
   return <section className="settings-page settings-v2">
-    <div className="screen-intro"><span className="section-kicker">MY SPACE</span><h1>공부할 공간을<br /><em>가볍게 정리해요.</em></h1></div>
+    <div className="screen-intro"><span className="section-kicker">나의 공부 설정</span><h1>공부할 공간을<br /><em>가볍게 정리해요.</em></h1></div>
     <article className={`profile-card profile-editor ${isProfileEditing ? "editing" : ""}`}><div className="large-avatar" style={{ background: profileColor }}>{profileName.trim().slice(0, 1) || "나"}</div><div><h2>{profileName.trim() ? `${profileName.trim()}님의 타임잇` : "나의 타임잇"}</h2><p>{isProfileEditing ? "이름과 색상을 바꾼 뒤 완료를 눌러주세요." : "나만의 프로필을 설정해보세요."}</p></div><button className="profile-edit-button" onClick={() => setIsProfileEditing((value) => !value)}>{isProfileEditing ? "완료" : "수정"}</button>{isProfileEditing && <><label className="profile-name-field"><span>이름</span><input value={profileName} maxLength={10} onChange={(event) => setProfileName(event.target.value)} aria-label="프로필 이름" /></label><div className="profile-color-row" aria-label="프로필 색상">{["#e5a089", "#8d9bc4", "#7eae99", "#b78aac", "#8b827c"].map((color) => <button className={profileColor === color ? "selected" : ""} onClick={() => setProfileColor(color)} style={{ background: color }} aria-label={`${color} 프로필 색상`} key={color} />)}</div></>}</article>
     <section className="settings-group settings-subjects"><div className="settings-subjects-head"><span>과목 관리</span><button onClick={() => setIsSubjectEditing((value) => !value)}>{isSubjectEditing ? "완료" : "수정"}</button></div>{subjects.map((subject) => <div className="settings-subject" key={subject.id}><i style={{ background: subject.color }} /><span className="settings-subject-copy"><b>{subject.name}</b><small>{formatMinutes(subject.minutes)} 기록됨</small></span>{isSubjectEditing && <button className="subject-delete-button" onClick={() => onDeleteSubject(subject.id)} disabled={subjects.length === 1}>삭제</button>}</div>)}<div className="add-todo"><input value={subjectName} maxLength={12} onChange={(event) => setSubjectName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { onAddSubject(subjectName); setSubjectName(""); } }} placeholder="새 과목 이름" /><button onClick={() => { onAddSubject(subjectName); setSubjectName(""); }}>추가</button></div></section>
     <section className="settings-group"><span>화면 설정</span><button onClick={() => setIsDark(!isDark)}><i className="theme-icon">{isDark ? "☾" : "☀"}</i><b>다크 모드</b><span className={`toggle ${isDark ? "on" : ""}`}><i /></span></button><button onClick={() => setIsThemeOpen((value) => !value)}><i className="theme-icon">✦</i><b>플래너 테마</b><small>{selectedTheme.label}</small><strong>›</strong></button>{isThemeOpen && <div className="planner-theme-options">{themes.map((theme) => <button key={theme.id} className={plannerTheme === theme.id ? "selected" : ""} onClick={() => { setPlannerTheme(theme.id); setIsThemeOpen(false); }}><i className={`theme-swatch ${theme.id}`} /><span><b>{theme.label}</b><small>{theme.description}</small></span><strong>{plannerTheme === theme.id ? "✓" : ""}</strong></button>)}</div>}</section>

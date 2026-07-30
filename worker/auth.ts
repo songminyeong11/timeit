@@ -9,6 +9,7 @@ type AuthUser = {
   email: string;
   name: string;
   authProvider: "password" | "google" | "password+google";
+  birthDate: string | null;
 };
 
 const GOOGLE_CLIENT_ID = "322831832887-fm9l7tdqbp1qgfd6v52rirbt4b1nmdt6.apps.googleusercontent.com";
@@ -29,6 +30,15 @@ function json(body: unknown, status = 200, headers: HeadersInit = {}) {
       ...headers,
     },
   });
+}
+
+function validBirthDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  const minimum = new Date("1940-01-01T00:00:00Z");
+  const maximum = new Date();
+  maximum.setUTCFullYear(maximum.getUTCFullYear() - 7);
+  return Number.isFinite(parsed.getTime()) && parsed >= minimum && parsed <= maximum && parsed.toISOString().slice(0, 10) === value;
 }
 
 async function readJsonBody<T>(request: Request, maxBytes = 16_384): Promise<T | null> {
@@ -115,7 +125,20 @@ async function ensureSchema(db: D1Database) {
   if (!columnNames.has("recovery_salt")) await db.prepare("ALTER TABLE users ADD COLUMN recovery_salt TEXT").run();
   if (!columnNames.has("google_sub")) await db.prepare("ALTER TABLE users ADD COLUMN google_sub TEXT").run();
   if (!columnNames.has("auth_provider")) await db.prepare("ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'password'").run();
+  if (!columnNames.has("birth_date")) await db.prepare("ALTER TABLE users ADD COLUMN birth_date TEXT").run();
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_unique ON users(google_sub)").run();
+  await db.batch([
+    db.prepare("CREATE TABLE IF NOT EXISTS study_groups (id TEXT PRIMARY KEY NOT NULL, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, description TEXT NOT NULL, category TEXT NOT NULL, target_grade TEXT, visibility TEXT NOT NULL DEFAULT 'public', join_code TEXT NOT NULL UNIQUE, daily_target_minutes INTEGER NOT NULL DEFAULT 240, max_members INTEGER NOT NULL DEFAULT 20, created_at INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS group_members (group_id TEXT NOT NULL REFERENCES study_groups(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, role TEXT NOT NULL DEFAULT 'member', joined_at INTEGER NOT NULL, PRIMARY KEY(group_id, user_id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS group_presence (user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE, subject_name TEXT, active INTEGER NOT NULL DEFAULT 0, elapsed_seconds INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS group_posts (id TEXT PRIMARY KEY NOT NULL, group_id TEXT NOT NULL REFERENCES study_groups(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, body TEXT NOT NULL, created_at INTEGER NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS study_groups_owner_id_idx ON study_groups(owner_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS study_groups_target_grade_idx ON study_groups(target_grade)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS group_members_group_id_idx ON group_members(group_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS group_members_user_id_idx ON group_members(user_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS group_posts_group_id_idx ON group_posts(group_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS group_posts_created_at_idx ON group_posts(created_at)"),
+  ]);
 }
 
 async function currentUser(request: Request, db: D1Database): Promise<AuthUser | null> {
@@ -124,7 +147,7 @@ async function currentUser(request: Request, db: D1Database): Promise<AuthUser |
   const tokenHash = await sha256(token);
   const now = Date.now();
   const row = await db.prepare(
-    "SELECT users.id, users.email, users.display_name AS name, users.auth_provider AS authProvider FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?",
+    "SELECT users.id, users.email, users.display_name AS name, users.auth_provider AS authProvider, users.birth_date AS birthDate FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?",
   ).bind(tokenHash, now).first<AuthUser>();
   if (!row) await db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash).run();
   return row ?? null;
@@ -193,7 +216,7 @@ async function clearAuthFailures(db: D1Database, attemptKey: string) {
 
 async function verifiedPasswordUser(db: D1Database, userId: string, password: string) {
   const row = await db.prepare(
-    "SELECT id, email, display_name AS name, password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE id = ?",
+    "SELECT id, email, display_name AS name, auth_provider AS authProvider, birth_date AS birthDate, password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE id = ?",
   ).bind(userId).first<AuthUser & { passwordHash: string; passwordSalt: string }>();
   const candidateHash = await passwordHash(password, row?.passwordSalt ?? "timeit-invalid-account-salt");
   return row && safeEqual(candidateHash, row.passwordHash) ? row : null;
@@ -223,14 +246,246 @@ async function verifiedGoogleIdentity(credential: string) {
   }
 }
 
+function gradeFromBirthDate(birthDate: string | null) {
+  if (!birthDate) return null;
+  const birthYear = Number(birthDate.slice(0, 4));
+  const now = new Date();
+  const academicYear = now.getUTCMonth() < 2 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+  const gradeIndex = academicYear - birthYear - 6;
+  if (gradeIndex >= 1 && gradeIndex <= 6) return `초${gradeIndex}`;
+  if (gradeIndex >= 7 && gradeIndex <= 9) return `중${gradeIndex - 6}`;
+  if (gradeIndex >= 10 && gradeIndex <= 12) return `고${gradeIndex - 9}`;
+  return "대학생·일반";
+}
+
+function todayKeyInKorea(value = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
+
+function measuredTodaySeconds(payload: string | null) {
+  if (!payload) return 0;
+  try {
+    const parsed = JSON.parse(payload) as { studyLogs?: Array<{ recordedAt?: string; trackedSeconds?: number }> };
+    return (parsed.studyLogs ?? []).reduce((total, log) => {
+      if (!log.recordedAt || !Number.isFinite(log.trackedSeconds)) return total;
+      const recorded = new Date(log.recordedAt);
+      if (!Number.isFinite(recorded.getTime()) || todayKeyInKorea(recorded) !== todayKeyInKorea()) return total;
+      return total + Math.max(0, Math.round(log.trackedSeconds ?? 0));
+    }, 0);
+  } catch {
+    return 0;
+  }
+}
+
+function groupJoinCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const random = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(random, (value) => alphabet[value % alphabet.length]).join("");
+}
+
+async function groupMember(db: D1Database, groupId: string, userId: string) {
+  return db.prepare("SELECT role FROM group_members WHERE group_id = ? AND user_id = ?")
+    .bind(groupId, userId)
+    .first<{ role: "owner" | "member" }>();
+}
+
+async function groupSummaryRows(db: D1Database, user: AuthUser) {
+  const myGroups = await db.prepare(
+    `SELECT g.id, g.name, g.description, g.category, g.target_grade AS targetGrade,
+            g.visibility, g.join_code AS joinCode, g.daily_target_minutes AS dailyTargetMinutes,
+            g.max_members AS maxMembers, gm.role,
+            (SELECT COUNT(*) FROM group_members members WHERE members.group_id = g.id) AS memberCount
+       FROM study_groups g
+       JOIN group_members gm ON gm.group_id = g.id
+      WHERE gm.user_id = ?
+      ORDER BY gm.joined_at DESC`,
+  ).bind(user.id).all<Record<string, unknown>>();
+  const grade = gradeFromBirthDate(user.birthDate);
+  const recommended = await db.prepare(
+    `SELECT g.id, g.name, g.description, g.category, g.target_grade AS targetGrade,
+            g.visibility, g.daily_target_minutes AS dailyTargetMinutes, g.max_members AS maxMembers,
+            (SELECT COUNT(*) FROM group_members members WHERE members.group_id = g.id) AS memberCount
+       FROM study_groups g
+      WHERE g.visibility = 'public'
+        AND NOT EXISTS (SELECT 1 FROM group_members mine WHERE mine.group_id = g.id AND mine.user_id = ?)
+        AND (? IS NULL OR g.target_grade IS NULL OR g.target_grade = ?)
+      ORDER BY CASE WHEN g.target_grade = ? THEN 0 ELSE 1 END, memberCount DESC, g.created_at DESC
+      LIMIT 20`,
+  ).bind(user.id, grade, grade, grade).all<Record<string, unknown>>();
+  return { myGroups: myGroups.results ?? [], recommended: recommended.results ?? [], grade };
+}
+
+async function handleGroupRequest(request: Request, db: D1Database) {
+  const url = new URL(request.url);
+  const user = await currentUser(request, db);
+  if (!user) return json({ error: "그룹을 이용하려면 로그인이 필요해요." }, 401);
+
+  if (url.pathname === "/api/groups" && request.method === "GET") {
+    return json(await groupSummaryRows(db, user));
+  }
+
+  if (url.pathname === "/api/groups" && request.method === "POST") {
+    const body = await readJsonBody<{
+      name?: unknown;
+      description?: unknown;
+      category?: unknown;
+      targetGrade?: unknown;
+      visibility?: unknown;
+      dailyTargetMinutes?: unknown;
+      maxMembers?: unknown;
+    }>(request);
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    const description = typeof body?.description === "string" ? body.description.trim() : "";
+    const category = typeof body?.category === "string" ? body.category.trim() : "";
+    const targetGrade = typeof body?.targetGrade === "string" ? body.targetGrade.trim() : "";
+    const visibility = body?.visibility === "private" ? "private" : "public";
+    const dailyTargetMinutes = Number(body?.dailyTargetMinutes);
+    const maxMembers = Number(body?.maxMembers);
+    if (name.length < 2 || name.length > 24) return json({ error: "그룹 이름은 2~24자로 입력해 주세요." }, 400);
+    if (description.length < 2 || description.length > 80) return json({ error: "그룹 소개는 2~80자로 입력해 주세요." }, 400);
+    if (!["내신", "수능", "자격증", "공무원", "어학", "기타"].includes(category)) return json({ error: "그룹 분야를 선택해 주세요." }, 400);
+    if (!Number.isInteger(dailyTargetMinutes) || dailyTargetMinutes < 30 || dailyTargetMinutes > 960) return json({ error: "하루 기준 시간은 30분~16시간으로 설정해 주세요." }, 400);
+    if (!Number.isInteger(maxMembers) || maxMembers < 2 || maxMembers > 50) return json({ error: "그룹 정원은 2~50명으로 설정해 주세요." }, 400);
+    const owned = await db.prepare("SELECT COUNT(*) AS count FROM study_groups WHERE owner_id = ?").bind(user.id).first<{ count: number }>();
+    if ((owned?.count ?? 0) >= 5) return json({ error: "직접 운영할 수 있는 그룹은 최대 5개예요." }, 409);
+    const groupId = crypto.randomUUID();
+    let joinCode = groupJoinCode();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const exists = await db.prepare("SELECT id FROM study_groups WHERE join_code = ?").bind(joinCode).first();
+      if (!exists) break;
+      joinCode = groupJoinCode();
+    }
+    const now = Date.now();
+    await db.batch([
+      db.prepare("INSERT INTO study_groups (id, owner_id, name, description, category, target_grade, visibility, join_code, daily_target_minutes, max_members, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(groupId, user.id, name, description, category, targetGrade || null, visibility, joinCode, dailyTargetMinutes, maxMembers, now),
+      db.prepare("INSERT INTO group_members (group_id, user_id, role, joined_at) VALUES (?, ?, 'owner', ?)")
+        .bind(groupId, user.id, now),
+    ]);
+    return json({ ok: true, groupId, joinCode }, 201);
+  }
+
+  if (url.pathname === "/api/groups/join" && request.method === "POST") {
+    const body = await readJsonBody<{ groupId?: unknown; joinCode?: unknown }>(request);
+    const groupIdInput = typeof body?.groupId === "string" ? body.groupId : "";
+    const joinCode = typeof body?.joinCode === "string" ? body.joinCode.trim().toUpperCase() : "";
+    const group = groupIdInput
+      ? await db.prepare("SELECT id, visibility, max_members AS maxMembers FROM study_groups WHERE id = ?").bind(groupIdInput).first<{ id: string; visibility: string; maxMembers: number }>()
+      : await db.prepare("SELECT id, visibility, max_members AS maxMembers FROM study_groups WHERE join_code = ?").bind(joinCode).first<{ id: string; visibility: string; maxMembers: number }>();
+    if (!group) return json({ error: "그룹을 찾지 못했어요. 초대 코드를 확인해 주세요." }, 404);
+    if (group.visibility === "private" && !joinCode) return json({ error: "비공개 그룹은 초대 코드가 필요해요." }, 403);
+    const count = await db.prepare("SELECT COUNT(*) AS count FROM group_members WHERE group_id = ?").bind(group.id).first<{ count: number }>();
+    if ((count?.count ?? 0) >= group.maxMembers) return json({ error: "그룹 정원이 모두 찼어요." }, 409);
+    await db.prepare("INSERT OR IGNORE INTO group_members (group_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)")
+      .bind(group.id, user.id, Date.now())
+      .run();
+    return json({ ok: true, groupId: group.id });
+  }
+
+  if (url.pathname === "/api/groups/presence" && request.method === "POST") {
+    const body = await readJsonBody<{ active?: unknown; subjectName?: unknown; elapsedSeconds?: unknown }>(request);
+    const active = body?.active === true;
+    const subjectName = typeof body?.subjectName === "string" ? body.subjectName.trim().slice(0, 24) : "";
+    const elapsedSeconds = Math.max(0, Math.min(86_400, Math.round(Number(body?.elapsedSeconds) || 0)));
+    await db.prepare(
+      "INSERT INTO group_presence (user_id, subject_name, active, elapsed_seconds, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET subject_name = excluded.subject_name, active = excluded.active, elapsed_seconds = excluded.elapsed_seconds, updated_at = excluded.updated_at",
+    ).bind(user.id, subjectName || null, active ? 1 : 0, elapsedSeconds, Date.now()).run();
+    return json({ ok: true });
+  }
+
+  const groupMatch = url.pathname.match(/^\/api\/groups\/([^/]+)(?:\/(posts))?$/);
+  if (!groupMatch) return json({ error: "지원하지 않는 그룹 요청이에요." }, 404);
+  const groupId = groupMatch[1];
+  const subresource = groupMatch[2];
+  const membership = await groupMember(db, groupId, user.id);
+  if (!membership) return json({ error: "가입한 그룹만 볼 수 있어요." }, 403);
+
+  if (!subresource && request.method === "GET") {
+    const group = await db.prepare(
+      `SELECT id, owner_id AS ownerId, name, description, category, target_grade AS targetGrade,
+              visibility, join_code AS joinCode, daily_target_minutes AS dailyTargetMinutes,
+              max_members AS maxMembers, created_at AS createdAt
+         FROM study_groups WHERE id = ?`,
+    ).bind(groupId).first<Record<string, unknown>>();
+    if (!group) return json({ error: "그룹을 찾지 못했어요." }, 404);
+    const memberRows = await db.prepare(
+      `SELECT u.id, u.display_name AS name, u.birth_date AS birthDate, gm.role, gm.joined_at AS joinedAt,
+              ud.payload, gp.subject_name AS subjectName, gp.active, gp.elapsed_seconds AS elapsedSeconds,
+              gp.updated_at AS presenceUpdatedAt
+         FROM group_members gm
+         JOIN users u ON u.id = gm.user_id
+         LEFT JOIN user_data ud ON ud.user_id = u.id
+         LEFT JOIN group_presence gp ON gp.user_id = u.id
+        WHERE gm.group_id = ?`,
+    ).bind(groupId).all<{
+      id: string;
+      name: string;
+      birthDate: string | null;
+      role: string;
+      joinedAt: number;
+      payload: string | null;
+      subjectName: string | null;
+      active: number | null;
+      elapsedSeconds: number | null;
+      presenceUpdatedAt: number | null;
+    }>();
+    const now = Date.now();
+    const members = (memberRows.results ?? []).map((member) => ({
+      id: member.id,
+      name: member.name,
+      grade: gradeFromBirthDate(member.birthDate),
+      role: member.role,
+      todaySeconds: measuredTodaySeconds(member.payload),
+      isStudying: member.active === 1 && now - (member.presenceUpdatedAt ?? 0) < 90_000,
+      subjectName: member.subjectName,
+      elapsedSeconds: member.elapsedSeconds ?? 0,
+      isMe: member.id === user.id,
+    })).sort((left, right) => right.todaySeconds - left.todaySeconds);
+    const posts = await db.prepare(
+      `SELECT p.id, p.body, p.created_at AS createdAt, u.id AS authorId, u.display_name AS authorName
+         FROM group_posts p JOIN users u ON u.id = p.user_id
+        WHERE p.group_id = ? ORDER BY p.created_at DESC LIMIT 30`,
+    ).bind(groupId).all<Record<string, unknown>>();
+    return json({ group: { ...group, role: membership.role }, members, posts: posts.results ?? [] });
+  }
+
+  if (!subresource && request.method === "DELETE") {
+    if (membership.role === "owner") {
+      await db.prepare("DELETE FROM study_groups WHERE id = ? AND owner_id = ?").bind(groupId, user.id).run();
+    } else {
+      await db.prepare("DELETE FROM group_members WHERE group_id = ? AND user_id = ?").bind(groupId, user.id).run();
+    }
+    return json({ ok: true });
+  }
+
+  if (subresource === "posts" && request.method === "POST") {
+    const body = await readJsonBody<{ body?: unknown }>(request);
+    const postBody = typeof body?.body === "string" ? body.body.trim() : "";
+    if (postBody.length < 1 || postBody.length > 240) return json({ error: "메시지는 1~240자로 입력해 주세요." }, 400);
+    await db.prepare("INSERT INTO group_posts (id, group_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), groupId, user.id, postBody, Date.now())
+      .run();
+    return json({ ok: true }, 201);
+  }
+
+  return json({ error: "지원하지 않는 그룹 요청이에요." }, 404);
+}
+
 export async function handleAuthRequest(request: Request, env: AuthEnv) {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/auth/") && !url.pathname.startsWith("/api/account/") && url.pathname !== "/api/user-data") return null;
+  if (!url.pathname.startsWith("/api/auth/") && !url.pathname.startsWith("/api/account/") && !url.pathname.startsWith("/api/groups") && url.pathname !== "/api/user-data") return null;
   if (!env.DB) return json({ error: "로그인 저장소가 아직 연결되지 않았어요." }, 503);
   if (request.method !== "GET" && !validOrigin(request)) return json({ error: "허용되지 않은 요청이에요." }, 403);
 
   const db = env.DB;
   await ensureSchema(db);
+
+  if (url.pathname.startsWith("/api/groups")) return handleGroupRequest(request, db);
 
   if (url.pathname === "/api/auth/session" && request.method === "GET") {
     return json({ user: await currentUser(request, db) });
@@ -243,12 +498,12 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
     if (!identity) return json({ error: "Google 로그인을 확인하지 못했어요. 다시 시도해 주세요." }, 401);
 
     let row = await db.prepare(
-      "SELECT id, email, display_name AS name, auth_provider AS authProvider FROM users WHERE google_sub = ?",
+      "SELECT id, email, display_name AS name, auth_provider AS authProvider, birth_date AS birthDate FROM users WHERE google_sub = ?",
     ).bind(identity.sub).first<AuthUser>();
 
     if (!row) {
       const emailUser = await db.prepare(
-        "SELECT id, email, display_name AS name, auth_provider AS authProvider, google_sub AS googleSub FROM users WHERE email = ?",
+        "SELECT id, email, display_name AS name, auth_provider AS authProvider, birth_date AS birthDate, google_sub AS googleSub FROM users WHERE email = ?",
       ).bind(identity.email).first<AuthUser & { googleSub: string | null }>();
       if (emailUser) {
         if (emailUser.googleSub && emailUser.googleSub !== identity.sub) {
@@ -278,10 +533,10 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
             identity.sub,
             Date.now(),
           ).run();
-          row = { id: userId, email: identity.email, name: identity.name, authProvider: "google" };
+          row = { id: userId, email: identity.email, name: identity.name, authProvider: "google", birthDate: null };
         } catch {
           row = await db.prepare(
-            "SELECT id, email, display_name AS name, auth_provider AS authProvider FROM users WHERE google_sub = ?",
+            "SELECT id, email, display_name AS name, auth_provider AS authProvider, birth_date AS birthDate FROM users WHERE google_sub = ?",
           ).bind(identity.sub).first<AuthUser>();
           if (!row) return json({ error: "Google 계정을 연결하지 못했어요. 다시 시도해 주세요." }, 409);
         }
@@ -291,21 +546,23 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
   }
 
   if (url.pathname === "/api/auth/signup" && request.method === "POST") {
-    const body = await readJsonBody<{ name?: unknown; email?: unknown; password?: unknown }>(request);
+    const body = await readJsonBody<{ name?: unknown; email?: unknown; password?: unknown; birthDate?: unknown }>(request);
     const name = typeof body?.name === "string" ? body.name.trim() : "";
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body?.password === "string" ? body.password : "";
+    const birthDate = typeof body?.birthDate === "string" ? body.birthDate : "";
     if (name.length < 2 || name.length > 24) return json({ error: "이름은 2~24자로 입력해 주세요." }, 400);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120) return json({ error: "올바른 이메일을 입력해 주세요." }, 400);
     if (password.length < 8 || password.length > 128) return json({ error: "비밀번호는 8자 이상 입력해 주세요." }, 400);
+    if (!validBirthDate(birthDate)) return json({ error: "생년월일을 정확히 입력해 주세요." }, 400);
     const existing = await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
     if (existing) return json({ error: "이미 가입된 이메일이에요." }, 409);
-    const user: AuthUser = { id: crypto.randomUUID(), email, name, authProvider: "password" };
+    const user: AuthUser = { id: crypto.randomUUID(), email, name, authProvider: "password", birthDate };
     const salt = randomToken(16);
     const nextRecoveryCode = recoveryCode();
     const recoverySalt = randomToken(16);
-    await db.prepare("INSERT INTO users (id, email, display_name, password_hash, password_salt, recovery_hash, recovery_salt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(user.id, user.email, user.name, await passwordHash(password, salt), salt, await passwordHash(nextRecoveryCode, recoverySalt), recoverySalt, Date.now())
+    await db.prepare("INSERT INTO users (id, email, display_name, password_hash, password_salt, recovery_hash, recovery_salt, birth_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(user.id, user.email, user.name, await passwordHash(password, salt), salt, await passwordHash(nextRecoveryCode, recoverySalt), recoverySalt, birthDate, Date.now())
       .run();
     const response = await createSession(db, user);
     const payload = await response.json() as { user: AuthUser };
@@ -321,7 +578,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
     if (lockRemaining > 0) {
       return json({ error: "로그인 시도가 너무 많아요. 15분 뒤 다시 시도해 주세요." }, 429, { "Retry-After": String(Math.ceil(lockRemaining / 1000)) });
     }
-    const row = await db.prepare("SELECT id, email, display_name AS name, auth_provider AS authProvider, password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE email = ?")
+    const row = await db.prepare("SELECT id, email, display_name AS name, auth_provider AS authProvider, birth_date AS birthDate, password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE email = ?")
       .bind(email)
       .first<AuthUser & { passwordHash: string; passwordSalt: string }>();
     const candidateHash = await passwordHash(password, row?.passwordSalt ?? "timeit-invalid-account-salt");
@@ -330,7 +587,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
       return json({ error: "이메일 또는 비밀번호를 확인해 주세요." }, 401);
     }
     await clearAuthFailures(db, attemptKey);
-    return createSession(db, { id: row.id, email: row.email, name: row.name, authProvider: row.authProvider });
+    return createSession(db, { id: row.id, email: row.email, name: row.name, authProvider: row.authProvider, birthDate: row.birthDate });
   }
 
   if (url.pathname === "/api/auth/logout" && request.method === "POST") {
@@ -374,11 +631,13 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
   if (url.pathname === "/api/account/profile" && request.method === "PATCH") {
     const user = await currentUser(request, db);
     if (!user) return json({ error: "로그인이 필요해요." }, 401);
-    const body = await readJsonBody<{ name?: unknown }>(request);
+    const body = await readJsonBody<{ name?: unknown; birthDate?: unknown }>(request);
     const name = typeof body?.name === "string" ? body.name.trim() : "";
+    const birthDate = typeof body?.birthDate === "string" ? body.birthDate : "";
     if (name.length < 2 || name.length > 24) return json({ error: "이름은 2~24자로 입력해 주세요." }, 400);
-    await db.prepare("UPDATE users SET display_name = ? WHERE id = ?").bind(name, user.id).run();
-    return json({ user: { ...user, name } });
+    if (!validBirthDate(birthDate)) return json({ error: "생년월일을 정확히 입력해 주세요." }, 400);
+    await db.prepare("UPDATE users SET display_name = ?, birth_date = ? WHERE id = ?").bind(name, birthDate, user.id).run();
+    return json({ user: { ...user, name, birthDate } });
   }
 
   if (url.pathname === "/api/account/password" && request.method === "POST") {

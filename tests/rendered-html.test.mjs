@@ -21,16 +21,18 @@ test("server-renders the Timeit study dashboard", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>타임잇 \| 공부가 쌓이는 나만의 페이지<\/title>/);
-  assert.match(html, /MY TO-DO/);
+  assert.match(html, /오늘의 할 일/);
   assert.match(html, /오늘 순공 시간/);
   assert.match(html, /00:00:00/);
   assert.match(html, /타이머/);
+  assert.match(html, /그룹/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|Building your site/i);
 });
 
 test("keeps automatic timer logging and readable planning affordances wired", async () => {
-  const [page, css, workerAuth, workerIndex, hosting] = await Promise.all([
+  const [page, groups, css, workerAuth, workerIndex, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/group-screen.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../worker/auth.ts", import.meta.url), "utf8"),
     readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
@@ -147,6 +149,9 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /\/api\/account\/recovery-code/);
   assert.match(page, /aria-label="계정 정보 열기"/);
   assert.match(page, /className="quick-theme-toggle"/);
+  assert.match(page, /aria-label=\{authUser \? "설정 열기"/);
+  assert.match(page, /id: "group" as Screen/);
+  assert.match(page, /type="date" value=\{birthDate\}/);
   assert.match(page, /다크 모드로 변경/);
   assert.match(page, /\/api\/user-data/);
   assert.match(page, /accountDataReady/);
@@ -162,6 +167,12 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.recovery-code-card/);
   assert.match(css, /\.quick-theme-toggle/);
   assert.match(css, /\.dark \.quick-theme-toggle/);
+  assert.match(css, /\.group-room-hero/);
+  assert.match(css, /\.dark \.group-summary-card/);
+  assert.match(groups, /초대 코드로 가입/);
+  assert.match(groups, /오늘 순위/);
+  assert.match(groups, /실시간 집중 현황|집중 현황/);
+  assert.match(groups, /\/api\/groups\/presence|\/api\/groups/);
   assert.match(css, /--motion-base: 260ms/);
   assert.match(css, /@keyframes screen-enter/);
   assert.match(css, /@keyframes surface-enter/);
@@ -184,6 +195,10 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(workerAuth, /recovery_hash/);
   assert.match(workerAuth, /AUTH_ATTEMPT_LIMIT/);
   assert.match(workerAuth, /auth_attempts/);
+  assert.match(workerAuth, /CREATE TABLE IF NOT EXISTS study_groups/);
+  assert.match(workerAuth, /group_presence/);
+  assert.match(workerAuth, /birth_date/);
+  assert.match(workerAuth, /measuredTodaySeconds/);
   assert.match(workerIndex, /X-Content-Type-Options/);
   assert.doesNotMatch(workerAuth, /localStorage/);
   assert.match(page, /"중지"/);
