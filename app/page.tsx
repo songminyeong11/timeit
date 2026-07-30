@@ -356,7 +356,7 @@ export default function Home() {
 
   useEffect(() => {
     const isDemo = window.location.hostname.split(".")[0] === "timeit-demo";
-    const expectedStorageVersion = isDemo ? "demo-v5" : "production-v1";
+    const expectedStorageVersion = isDemo ? "demo-v5" : "production-v2";
     const savedTodos = window.localStorage.getItem("timeit-todos");
     const savedTheme = window.localStorage.getItem("timeit-theme");
     const savedLogs = window.localStorage.getItem("timeit-study-logs");
@@ -369,7 +369,7 @@ export default function Home() {
     const lightDefaultApplied = window.localStorage.getItem("timeit-light-default-v1");
     const storageVersion = window.localStorage.getItem("timeit-storage-version");
     if (storageVersion !== expectedStorageVersion) {
-      ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-joined-groups", "timeit-profile-name"].forEach((key) => window.localStorage.removeItem(key));
+      ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-joined-groups", "timeit-profile-name", "timeit-profile-color", "timeit-profile-status"].forEach((key) => window.localStorage.removeItem(key));
       window.localStorage.setItem("timeit-storage-version", expectedStorageVersion);
       if (isDemo) {
         setSubjects(demoSubjects);
