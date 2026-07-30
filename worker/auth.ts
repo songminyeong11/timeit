@@ -10,7 +10,7 @@ type AuthUser = {
 
 const SESSION_COOKIE = "timeit_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
-const PASSWORD_ITERATIONS = 210_000;
+const PASSWORD_ITERATIONS = 100_000;
 const encoder = new TextEncoder();
 
 function json(body: unknown, status = 200, headers: HeadersInit = {}) {
