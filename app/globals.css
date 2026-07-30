@@ -366,3 +366,172 @@ button { border: 0; cursor: pointer; color: inherit; }
   .auth-trigger.signed-in span { display: none; }
   .auth-dialog { padding: 26px 22px; border-radius: 27px; }
 }
+
+/* Product-grade visual system: clearer hierarchy, consistent surfaces and reliable contrast. */
+.app-shell {
+  --surface: #ffffff;
+  --surface-soft: #f6f3ef;
+  --surface-raised: #fcfaf7;
+  --line: #e8e2dc;
+  --text-primary: #2f2b2c;
+  --text-secondary: #746f70;
+  --text-tertiary: #9a9493;
+  --accent: #d77f69;
+  color-scheme: light;
+}
+.app-shell.dark {
+  --surface: #2c3233;
+  --surface-soft: #252b2c;
+  --surface-raised: #303738;
+  --line: #424a4b;
+  --text-primary: #f4f0eb;
+  --text-secondary: #c8c1bd;
+  --text-tertiary: #a9a29f;
+  --accent: #f19a83;
+  color-scheme: dark;
+}
+body { letter-spacing: -.018em; }
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #d77f69) 68%, white);
+  outline-offset: 2px;
+}
+.phone-frame { border-radius: 36px; }
+.content-scroll { padding-left: 22px; padding-right: 22px; }
+.planner-card, .weekly-chart-card, .analytics-card, .stats-highlight, .home-study-bottom, .today-focus-card, .focus-console, .profile-card {
+  border-radius: 26px;
+}
+.section-heading h2, .planner-card-header h2, .home-section-header h2 { letter-spacing: -.035em; }
+.section-kicker { font-weight: 700; letter-spacing: .08em; }
+.bottom-nav {
+  border-color: color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 25px;
+  background: color-mix(in srgb, var(--surface) 91%, transparent);
+  box-shadow: 0 16px 42px rgba(46,40,37,.12), inset 0 1px 0 rgba(255,255,255,.62);
+}
+.nav-item { font-weight: 650; }
+.nav-item.active { background: #f7ece7; color: #cb705b; }
+.dark .bottom-nav {
+  border-color: #3e4748;
+  background: rgba(39,45,46,.94);
+  box-shadow: 0 16px 44px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.045);
+}
+.dark .nav-item { color: #bdb7b3; }
+.dark .nav-item.active { background: #413633; color: #ffab93; }
+
+/* Calendar cells use an independent palette so study intensity stays visible in both modes. */
+.study-calendar-card { background: var(--surface); border-color: var(--line); }
+.study-calendar-weekdays { color: var(--text-tertiary); font-size: 9px; font-weight: 700; }
+.study-calendar-grid { grid-auto-rows: 52px; gap: 5px; }
+.calendar-day {
+  padding: 7px;
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 15px;
+  color: #46534b;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+}
+.calendar-day.grass-0 { background: #f2f4f0; }
+.calendar-day.grass-1 { background: #dce9df; }
+.calendar-day.grass-2 { background: #afd0b7; }
+.calendar-day.grass-3 { background: #7fae8a; color: #173724; }
+.calendar-day.grass-4 { background: #4f8462; color: #fff; }
+.calendar-day b { font-size: 10px; font-weight: 700; }
+.calendar-day small { font-size: 7.5px; font-weight: 700; }
+.calendar-day.grass-3 small, .calendar-day.grass-4 small { color: #fff; opacity: .95; }
+.calendar-day > i { border: 1px solid rgba(86,75,69,.08); background: rgba(255,255,255,.88); }
+.calendar-day.selected { border-color: #7b9384; box-shadow: inset 0 0 0 1px #7b9384, 0 4px 12px rgba(65,78,70,.1); }
+.calendar-day.today, .calendar-day.today.selected {
+  border-color: #3f4944;
+  box-shadow: inset 0 0 0 1.5px #3f4944, 0 5px 13px rgba(47,58,52,.15);
+}
+.calendar-day-detail { background: var(--surface-soft); border-color: var(--line); }
+.calendar-sync-note, .calendar-day-detail p { color: var(--text-tertiary); }
+.calendar-sync-note button { color: #856d66; }
+.dark .study-calendar-weekdays { color: #bdb6b2; }
+.dark .calendar-day {
+  border-color: #3f4848;
+  color: #e8eee9;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+}
+.dark .calendar-day.grass-0 { background: #303738; }
+.dark .calendar-day.grass-1 { background: #34443b; }
+.dark .calendar-day.grass-2 { background: #3f604b; }
+.dark .calendar-day.grass-3 { background: #4e795c; color: #f5faf6; }
+.dark .calendar-day.grass-4 { background: #5f936e; color: #fff; }
+.dark .calendar-day.grass-3 small, .dark .calendar-day.grass-4 small { color: #fff; }
+.dark .calendar-day > i { border-color: rgba(255,255,255,.08); background: rgba(20,25,25,.72); color: #f2d1c7; }
+.dark .calendar-day.saturday b { color: #9fc7ff; }
+.dark .calendar-day.holiday b, .dark .calendar-day-meta .holiday-name { color: #ffaaa4; }
+.dark .calendar-day.selected { border-color: #a9bcb1; box-shadow: inset 0 0 0 1px #a9bcb1, 0 5px 14px rgba(0,0,0,.2); }
+.dark .calendar-day.today, .dark .calendar-day.today.selected {
+  border-color: #edf4ef;
+  box-shadow: inset 0 0 0 1.5px #edf4ef, 0 5px 14px rgba(0,0,0,.28);
+}
+.dark .calendar-day-detail { background: #262d2e; border-color: #40494a; }
+.dark .calendar-day-detail p, .dark .calendar-sync-note { color: #bdb6b2; }
+.dark .calendar-sync-note button { color: #e4b2a4; }
+
+/* First-entry account sheet: calm, familiar and readable rather than decorative. */
+.auth-overlay {
+  padding: 22px;
+  background: rgba(18,20,21,.58);
+  backdrop-filter: blur(18px) saturate(92%);
+}
+.auth-dialog {
+  width: min(100%, 404px);
+  padding: 34px;
+  border: 1px solid rgba(255,255,255,.74);
+  border-radius: 28px;
+  background: #fffdfa;
+  box-shadow: 0 34px 90px rgba(28,24,22,.28), 0 3px 10px rgba(28,24,22,.09);
+}
+.auth-dialog .section-kicker { margin-bottom: 9px; color: #ca7661; font-size: 10px; font-weight: 750; letter-spacing: .12em; }
+.auth-dialog h2 { color: #292627; font-size: 27px; font-weight: 720; letter-spacing: -.045em; }
+.auth-description { max-width: 310px; margin: 10px 0 24px; color: #746e6c; font-size: 13px; line-height: 1.55; }
+.auth-close { top: 18px; right: 18px; width: 36px; height: 36px; background: #f3efeb; color: #6f6967; font-size: 20px; }
+.auth-tabs { gap: 5px; margin-bottom: 20px; padding: 5px; border-radius: 16px; background: #f1ede9; }
+.auth-tabs button { height: 40px; border-radius: 12px; color: #847e7c; font-size: 12px; font-weight: 650; }
+.auth-tabs button.selected { color: #312d2d; box-shadow: 0 3px 12px rgba(63,52,47,.09); }
+.auth-form { gap: 14px; }
+.auth-form label { gap: 7px; color: #575250; font-size: 11px; font-weight: 650; }
+.auth-form input {
+  height: 49px;
+  padding: 0 15px;
+  border-color: #ddd6d0;
+  border-radius: 14px;
+  color: #302d2e;
+  font-size: 14px;
+}
+.auth-form input::placeholder { color: #aaa39f; opacity: 1; }
+.auth-primary {
+  min-height: 50px;
+  margin-top: 3px;
+  border-radius: 15px;
+  background: #313638;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 9px 22px rgba(35,40,42,.17);
+}
+.auth-error { padding: 11px 13px; border-radius: 12px; font-size: 11px; font-weight: 650; }
+.auth-security-note { margin-top: 15px; color: #938c89; font-size: 9.5px; }
+.account-email { color: #7e7774; font-size: 12px; }
+.account-sync-state { padding: 14px; border-radius: 14px; font-size: 11px; font-weight: 650; }
+.dark .auth-dialog { border-color: #465051; background: #272e2f; box-shadow: 0 34px 100px rgba(0,0,0,.5); }
+.dark .auth-dialog h2 { color: #f8f3ed; }
+.dark .auth-description, .dark .account-email { color: #c7bfba; }
+.dark .auth-close { background: #374041; color: #e6dfda; }
+.dark .auth-tabs { background: #343c3d; }
+.dark .auth-tabs button { color: #bcb5b1; }
+.dark .auth-tabs button.selected { background: #4a5354; color: #fff; }
+.dark .auth-form label { color: #d8d0cb; }
+.dark .auth-form input { border-color: #4a5556; background: #303839; color: #f8f3ed; }
+.dark .auth-form input::placeholder { color: #9faaa8; }
+.dark .auth-primary { background: #f0ebe5; color: #262c2d; box-shadow: none; }
+.dark .auth-security-note { color: #aaa29e; }
+
+@media (max-width: 540px) {
+  .phone-frame { border-radius: 0; }
+  .content-scroll { padding-left: 18px; padding-right: 18px; }
+  .study-calendar-grid { grid-auto-rows: 50px; gap: 4px; }
+  .auth-overlay { align-items: end; padding: 12px; }
+  .auth-dialog { width: 100%; padding: 30px 24px calc(26px + env(safe-area-inset-bottom)); border-radius: 28px; }
+}

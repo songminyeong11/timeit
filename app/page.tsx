@@ -500,6 +500,7 @@ export default function Home() {
         const payload = await response.json() as { user: AuthUser | null };
         if (!active) return;
         if (payload.user) await loadAccountData(payload.user);
+        else setIsAuthOpen(true);
       })
       .catch(() => undefined)
       .finally(() => { if (active) setAuthReady(true); });
@@ -873,27 +874,27 @@ function AuthDialog({ user, onClose, onAuthenticated, onLogout }: { user: AuthUs
       <button className="auth-close" onClick={onClose} aria-label="닫기">×</button>
       {user ? <>
         <div className="account-avatar">{user.name.slice(0, 1)}</div>
-        <span className="section-kicker">TIMEIT ACCOUNT</span>
+        <span className="section-kicker">TIMEIT</span>
         <h2 id="auth-title">{user.name}님의 계정</h2>
         <p className="account-email">{user.email}</p>
         <div className="account-sync-state"><i />로그인한 기기에서 공부 기록을 이어볼 수 있어요.</div>
         <button className="auth-primary auth-logout" onClick={() => void onLogout()}>로그아웃</button>
       </> : <>
-        <span className="section-kicker">TIMEIT ACCOUNT</span>
-        <h2 id="auth-title">{mode === "login" ? "다시 공부를 이어가요" : "나만의 기록을 시작해요"}</h2>
-        <p className="auth-description">{mode === "login" ? "계정에 저장된 플래너와 공부 시간을 불러옵니다." : "기록이 계정별로 안전하게 분리되어 저장됩니다."}</p>
+        <span className="section-kicker">TIMEIT</span>
+        <h2 id="auth-title">{mode === "login" ? "로그인" : "타임잇 시작하기"}</h2>
+        <p className="auth-description">{mode === "login" ? "저장한 공부 기록을 불러와 바로 이어서 시작하세요." : "기록을 안전하게 저장하고 다른 기기에서도 이어서 사용할 수 있어요."}</p>
         <div className="auth-tabs" role="tablist">
-          <button className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>로그인</button>
-          <button className={mode === "signup" ? "selected" : ""} onClick={() => { setMode("signup"); setError(""); }}>회원가입</button>
+          <button role="tab" aria-selected={mode === "login"} className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>로그인</button>
+          <button role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "selected" : ""} onClick={() => { setMode("signup"); setError(""); }}>회원가입</button>
         </div>
         <form className="auth-form" onSubmit={submit}>
-          {mode === "signup" && <label><span>이름</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="사용할 이름" minLength={2} maxLength={24} required /></label>}
-          <label><span>이메일</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@example.com" required /></label>
-          <label><span>비밀번호</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상 입력" minLength={8} maxLength={128} required /></label>
+          {mode === "signup" && <label><span>이름</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="사용할 이름" minLength={2} maxLength={24} autoFocus required /></label>}
+          <label><span>이메일</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@example.com" autoFocus={mode === "login"} required /></label>
+          <label><span>비밀번호</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상" minLength={8} maxLength={128} required /></label>
           {error && <p className="auth-error" role="alert">{error}</p>}
-          <button className="auth-primary" type="submit" disabled={busy}>{busy ? "확인 중…" : mode === "login" ? "로그인" : "계정 만들기"}</button>
+          <button className="auth-primary" type="submit" disabled={busy}>{busy ? "확인 중…" : mode === "login" ? "로그인" : "회원가입"}</button>
         </form>
-        <small className="auth-security-note">비밀번호는 원문으로 저장되지 않아요.</small>
+        <small className="auth-security-note">비밀번호는 암호화되어 안전하게 보관됩니다.</small>
       </>}
     </section>
   </div>;

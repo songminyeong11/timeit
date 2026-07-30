@@ -130,8 +130,12 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /\/api\/auth\/session/);
   assert.match(page, /\/api\/user-data/);
   assert.match(page, /accountDataReady/);
+  assert.match(page, /else setIsAuthOpen\(true\)/);
   assert.match(css, /\.auth-overlay/);
   assert.match(css, /\.auth-dialog/);
+  assert.match(css, /\.dark \.calendar-day\.grass-0 \{ background: #303738; \}/);
+  assert.match(css, /\.dark \.calendar-day\.grass-4 \{ background: #5f936e;/);
+  assert.match(css, /\.dark \.auth-form input::placeholder/);
   assert.equal(JSON.parse(hosting).d1, "DB");
   assert.match(workerIndex, /handleAuthRequest/);
   assert.match(workerAuth, /PBKDF2/);
