@@ -115,6 +115,11 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.calendar-day\.today, \.calendar-day\.today\.selected/);
   assert.doesNotMatch(css, /\.calendar-day\.today b \{ color:/);
   assert.match(css, /\.bottom-nav \{ bottom: max\(10px, env\(safe-area-inset-bottom\)\); width: min\(calc\(100% - 24px\), 436px\)/);
+  assert.match(css, /\.app-shell \{ min-height: 100dvh; background: var\(--paper\)/);
+  assert.match(css, /\.dark\.app-shell \{ background: var\(--paper\); \}/);
+  assert.match(css, /body:has\(\.app-shell:not\(\.dark\)\.planner-theme-fog\)/);
+  assert.doesNotMatch(css, /\.app-shell \{[^}]*background: #ece9e5/);
+  assert.doesNotMatch(css, /\.dark\.app-shell \{ background: radial-gradient/);
   assert.match(page, /"중지"/);
 });
 
