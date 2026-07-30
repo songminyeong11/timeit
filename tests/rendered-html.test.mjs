@@ -89,6 +89,11 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /STUDY CALENDAR/);
   assert.match(page, /parseCalendarFile/);
   assert.match(page, /accept="\.ics,text\/calendar"/);
+  assert.match(page, /createStudyCalendarFile/);
+  assert.match(page, /navigator\.canShare/);
+  assert.match(page, /폰으로 보내기/);
+  assert.match(page, /icon: CalendarDays/);
+  assert.match(page, /className="nav-icon"/);
   assert.doesNotMatch(page, /공부 잔디/);
   assert.match(css, /\.profile-edit-button/);
   assert.match(page, /"중지"/);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BarChart3, CalendarDays, House, Settings2, Timer } from "lucide-react";
 
 type Screen = "home" | "planner" | "timer" | "stats" | "settings";
 
@@ -189,8 +190,20 @@ function parseCalendarFile(source: string) {
   });
 }
 
-function Icon({ children }: { children: string }) {
-  return <span className="icon" aria-hidden="true">{children}</span>;
+function calendarDateTime(date: Date) {
+  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}${String(date.getMinutes()).padStart(2, "0")}${String(date.getSeconds()).padStart(2, "0")}`;
+}
+
+function createStudyCalendarFile(studyLogs: StudyLog[], subjects: Subject[]) {
+  const events = studyLogs.filter((log) => log.id !== "live-session").map((log) => {
+    const date = dateFromKey(logDateKey(log));
+    date.setHours(Math.floor(log.startMinutes / 60), log.startMinutes % 60, 0, 0);
+    const end = new Date(date.getTime() + Math.max(1, Math.round(loggedMinutes(log) * 60)) * 1000);
+    const subject = subjects.find((item) => item.id === log.subjectId);
+    const summary = `[타임잇] ${subject?.name ?? "공부"}`.replace(/([,;\\])/g, "\\$1");
+    return ["BEGIN:VEVENT", `UID:${log.id}@timeit`, `DTSTART:${calendarDateTime(date)}`, `DTEND:${calendarDateTime(end)}`, `SUMMARY:${summary}`, "END:VEVENT"].join("\r\n");
+  });
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Timeit//Study Calendar//KO", "CALSCALE:GREGORIAN", ...events, "END:VCALENDAR"].join("\r\n");
 }
 
 export default function Home() {
@@ -530,14 +543,14 @@ export default function Home() {
 
         <nav className="bottom-nav" aria-label="주요 메뉴">
           {[
-            ["home", "⌂", "홈"],
-            ["planner", "▦", "플래너"],
-            ["timer", "◷", "타이머"],
-            ["stats", "⌁", "통계"],
-            ["settings", "◌", "설정"],
-          ].map(([id, icon, label]) => (
-            <button key={id} className={`nav-item ${screen === id ? "active" : ""}`} onClick={() => setScreen(id as Screen)} aria-current={screen === id ? "page" : undefined}>
-              <Icon>{icon}</Icon><span>{label}</span>
+            { id: "home" as Screen, icon: House, label: "홈" },
+            { id: "planner" as Screen, icon: CalendarDays, label: "플래너" },
+            { id: "timer" as Screen, icon: Timer, label: "타이머" },
+            { id: "stats" as Screen, icon: BarChart3, label: "통계" },
+            { id: "settings" as Screen, icon: Settings2, label: "설정" },
+          ].map(({ id, icon: NavIcon, label }) => (
+            <button key={id} className={`nav-item ${screen === id ? "active" : ""}`} onClick={() => setScreen(id)} aria-current={screen === id ? "page" : undefined}>
+              <NavIcon className="nav-icon" strokeWidth={screen === id ? 2.35 : 1.85} aria-hidden="true" /><span>{label}</span>
             </button>
           ))}
         </nav>
@@ -717,6 +730,23 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
     });
     setCalendarSchedules(merged);
   };
+  const sendToPhoneCalendar = async () => {
+    if (!studyLogs.length) {
+      window.alert("휴대폰 캘린더로 보낼 공부 기록이 아직 없어요.");
+      return;
+    }
+    const file = new File([createStudyCalendarFile(studyLogs, subjects)], `timeit-study-${dateKey()}.ics`, { type: "text/calendar" });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: "타임잇 공부 기록" }).catch(() => undefined);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   return <section className="stats-page">
     <div className="screen-intro"><span className="section-kicker">STUDY INSIGHTS</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div>
@@ -724,12 +754,12 @@ function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedu
     <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><div className="stats-period" role="tablist"><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>이번 주</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>이번 달</button></div></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(periodTotal)}</b><small>{rangeLabel} 집중</small></div></div><div className="donut-legend">{bySubject.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{periodTotal ? Math.round(minutes / periodTotal * 100) : 0}%</b></span>)}</div></div></article>
     <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">{range === "week" ? "WEEKLY FLOW" : "MONTHLY FLOW"}</span><h2>{rangeLabel} 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(periodTotal)}</b></div><div className={`stats-bars ${range === "month" ? "month-bars" : ""}`}>{values.map((value, index) => <div key={index}><i style={{ height: `${Math.max(value / maxValue * 100, value ? 3 : 0)}%` }} /><span>{range === "week" ? weekdays[days[index].getDay()] : `${index + 1}주`}</span></div>)}</div></article>
     <article className="analytics-card study-calendar-card">
-      <div className="calendar-title-row"><div><span className="section-kicker">STUDY CALENDAR</span><h2>캘린더</h2></div><label className="calendar-import">일정 가져오기<input type="file" accept=".ics,text/calendar" onChange={(event) => void importCalendar(event.target.files?.[0])} /></label></div>
+      <div className="calendar-title-row"><div><span className="section-kicker">STUDY CALENDAR</span><h2>캘린더</h2></div><div className="calendar-actions"><label className="calendar-import">일정 가져오기<input type="file" accept=".ics,text/calendar" onChange={(event) => void importCalendar(event.target.files?.[0])} /></label><button className="calendar-export" onClick={() => void sendToPhoneCalendar()}>폰으로 보내기</button></div></div>
       <div className="calendar-month-nav"><button onClick={() => moveCalendarMonth(-1)} aria-label="이전 달">‹</button><strong>{calendarYear}년 {calendarMonthIndex + 1}월</strong><button onClick={() => moveCalendarMonth(1)} aria-label="다음 달">›</button></div>
       <div className="study-calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="study-calendar-grid">{Array.from({ length: calendarLeading }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}{calendarDays.map((item) => <button className={`calendar-day grass-${grassLevel(item.hours)} ${selectedCalendarDate === item.key ? "selected" : ""} ${item.key === dateKey() ? "today" : ""}`} onClick={() => setSelectedCalendarDate(item.key)} key={item.key}><b>{item.day}</b><small>{item.hours ? displayHours(item.hours) : ""}</small>{item.schedules.length > 0 && <i>{item.schedules.length}</i>}</button>)}</div>
       <div className="calendar-day-detail"><div><span>{selectedCalendarDate.replaceAll("-", ".")}</span><b>{formatMinutes(selectedStudyMinutes)} 집중</b></div>{selectedSchedules.length ? <ul>{selectedSchedules.map((schedule) => <li key={schedule.id}><time>{schedule.time ?? "종일"}</time><span>{schedule.title}</span></li>)}</ul> : <p>가져온 일정이 없어요.</p>}</div>
-      <p className="calendar-sync-note">휴대폰 캘린더에서 내보낸 ICS 파일을 가져오면 일정과 공부량을 한 달력에서 볼 수 있어요.</p>
+      <p className="calendar-sync-note">휴대폰 일정은 가져오고, 타임잇 공부 기록은 휴대폰 캘린더로 보낼 수 있어요.</p>
     </article>
   </section>;
 }
