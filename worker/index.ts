@@ -29,8 +29,16 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const authResponse = await handleAuthRequest(request, env);
-    if (authResponse) return authResponse;
+    try {
+      const authResponse = await handleAuthRequest(request, env);
+      if (authResponse) return authResponse;
+    } catch (error) {
+      console.error("timeit-auth-request-failed", error);
+      return Response.json(
+        { error: "계정 처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요." },
+        { status: 500, headers: { "Cache-Control": "no-store" } },
+      );
+    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
