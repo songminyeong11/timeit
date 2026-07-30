@@ -134,6 +134,7 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /\{ id: "planner" as Screen, icon: CalendarDays, label: "플래너" \}/);
   assert.match(page, /className=\{`auth-trigger/);
   assert.match(page, /function AuthDialog/);
+  assert.match(page, /className={`screen-stage screen-stage-\$\{screen\}`}/);
   assert.match(page, /Google 계정으로 계속하기/);
   assert.match(page, /\/api\/auth\/google/);
   assert.match(page, /identity\.renderButton/);
@@ -161,6 +162,12 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.recovery-code-card/);
   assert.match(css, /\.quick-theme-toggle/);
   assert.match(css, /\.dark \.quick-theme-toggle/);
+  assert.match(css, /--motion-base: 260ms/);
+  assert.match(css, /@keyframes screen-enter/);
+  assert.match(css, /@keyframes surface-enter/);
+  assert.match(css, /@keyframes bar-grow/);
+  assert.match(css, /@media \(hover: hover\) and \(pointer: fine\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.equal(JSON.parse(hosting).d1, "DB");
   assert.match(workerIndex, /handleAuthRequest/);
   assert.match(workerAuth, /PBKDF2/);

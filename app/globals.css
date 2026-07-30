@@ -804,3 +804,323 @@ button:focus-visible, input:focus-visible, select:focus-visible {
     transition-duration: .01ms !important;
   }
 }
+
+/* Motion system: short, restrained responses that support hierarchy without decorating it. */
+.app-shell {
+  --motion-quick: 160ms;
+  --motion-base: 260ms;
+  --motion-slow: 420ms;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-soft: cubic-bezier(.4, 0, .2, 1);
+}
+
+.phone-frame {
+  animation: frame-arrive var(--motion-slow) var(--ease-out) both;
+}
+.topbar {
+  animation: topbar-settle 380ms var(--ease-out) 50ms both;
+}
+.screen-stage {
+  min-height: 100%;
+  animation: screen-enter 360ms var(--ease-out) both;
+}
+
+.screen-stage :is(
+  .home-study-bottom,
+  .home-todo-card,
+  .planner-card,
+  .timer-status-bar,
+  .timer-mode-row,
+  .focus-console,
+  .subject-timer-list,
+  .screen-intro,
+  .stats-highlight,
+  .analytics-card,
+  .profile-card,
+  .settings-group
+) {
+  animation: surface-enter 400ms var(--ease-out) both;
+}
+.screen-stage :is(.home-todo-card, .planner-card, .timer-mode-row, .stats-highlight, .profile-card) { animation-delay: 35ms; }
+.screen-stage :is(.focus-console, .analytics-card:nth-of-type(2), .settings-group:nth-of-type(2)) { animation-delay: 70ms; }
+.screen-stage :is(.subject-timer-list, .analytics-card:nth-of-type(3), .settings-group:nth-of-type(3)) { animation-delay: 105ms; }
+.screen-stage .analytics-card:nth-of-type(4) { animation-delay: 140ms; }
+
+.brand span {
+  display: inline-block;
+  transform-origin: 50% 80%;
+  animation: brand-dot-settle 520ms var(--ease-out) 160ms both;
+}
+.avatar,
+.auth-trigger,
+.quick-theme-toggle,
+.sync-indicator,
+.nav-item,
+.home-start-button,
+.subject-play,
+.timer-main,
+.timer-reset,
+.date-arrow,
+.timeline-edit-toggle,
+.profile-edit-button,
+.google-calendar-button {
+  transition:
+    transform var(--motion-quick) var(--ease-out),
+    scale var(--motion-quick) var(--ease-out),
+    color var(--motion-base) var(--ease-soft),
+    background-color var(--motion-base) var(--ease-soft),
+    border-color var(--motion-base) var(--ease-soft),
+    box-shadow var(--motion-base) var(--ease-soft),
+    opacity var(--motion-quick) ease;
+}
+:is(
+  .avatar,
+  .auth-trigger,
+  .quick-theme-toggle,
+  .nav-item,
+  .home-start-button,
+  .subject-play,
+  .timer-main,
+  .timer-reset,
+  .date-arrow,
+  .timeline-edit-toggle,
+  .profile-edit-button,
+  .google-calendar-button
+):active {
+  scale: .965;
+}
+
+.nav-item.active .nav-icon {
+  animation: nav-icon-set 300ms var(--ease-out) both;
+}
+.nav-item::after {
+  transition: opacity var(--motion-base) ease, transform var(--motion-base) var(--ease-out);
+}
+.quick-theme-toggle svg {
+  animation: theme-icon-turn 280ms var(--ease-out) both;
+}
+
+.todo-row,
+.subject-timer-row,
+.settings-subject,
+.timeline-record-list button,
+.donut-legend span,
+.calendar-day-detail li {
+  animation: row-enter 300ms var(--ease-out) both;
+}
+.todo-row:nth-child(2),
+.subject-timer-row:nth-child(2),
+.settings-subject:nth-child(2),
+.donut-legend span:nth-child(2) { animation-delay: 28ms; }
+.todo-row:nth-child(3),
+.subject-timer-row:nth-child(3),
+.settings-subject:nth-child(3),
+.donut-legend span:nth-child(3) { animation-delay: 56ms; }
+.todo-row:nth-child(n+4),
+.subject-timer-row:nth-child(n+4),
+.settings-subject:nth-child(n+4),
+.donut-legend span:nth-child(n+4) { animation-delay: 84ms; }
+.todo-row.completed .check-box {
+  animation: check-set 320ms var(--ease-out) both;
+}
+.add-todo,
+.timeline-editor,
+.timeline-edit-form,
+.planner-theme-options,
+.account-edit-panel,
+.account-inline-form,
+.account-provider-note {
+  transform-origin: top center;
+  animation: disclosure-open 280ms var(--ease-out) both;
+}
+.timeline-editor-error,
+.auth-error,
+.account-message {
+  animation: message-enter 240ms var(--ease-out) both;
+}
+
+.timer-mode-row button,
+.stats-period button,
+.auth-tabs button,
+.group-tabs button,
+.planner-theme-options button {
+  transition:
+    color var(--motion-base) var(--ease-soft),
+    background-color var(--motion-base) var(--ease-soft),
+    box-shadow var(--motion-base) var(--ease-soft),
+    transform var(--motion-quick) var(--ease-out);
+}
+.timer-mode-row button:active,
+.stats-period button:active,
+.auth-tabs button:active,
+.group-tabs button:active,
+.planner-theme-options button:active {
+  transform: scale(.975);
+}
+
+.focus-console,
+.subject-timer-row,
+.calendar-day,
+.settings-group,
+.profile-card,
+.analytics-card,
+.planner-card,
+.home-study-bottom {
+  transition:
+    transform var(--motion-base) var(--ease-out),
+    background-color var(--motion-base) var(--ease-soft),
+    border-color var(--motion-base) var(--ease-soft),
+    box-shadow var(--motion-base) var(--ease-soft);
+}
+.focus-time strong,
+.home-study-total strong,
+.subject-timer-row > strong,
+.timeline-today-time b {
+  transition: color var(--motion-base) ease, opacity var(--motion-quick) ease;
+}
+.timer-page.running .focus-console {
+  animation: focus-settle 480ms var(--ease-out) both;
+}
+.timer-page.running .signal.on {
+  animation: signal-breathe 1.8s ease-in-out infinite;
+}
+.timer-page.running .focus-time strong {
+  animation: time-focus 480ms var(--ease-out) both;
+}
+.saved-toast {
+  animation: toast-enter 320ms var(--ease-out) both;
+}
+
+.time-slot.filled {
+  transform-origin: center top;
+  animation: highlight-in 260ms var(--ease-out) both;
+  transition: filter var(--motion-base) ease, opacity var(--motion-base) ease;
+}
+.time-slot.live {
+  animation: live-highlight 1.7s ease-in-out infinite;
+}
+.stats-bars i {
+  transform-origin: bottom;
+  animation: bar-grow 520ms var(--ease-out) both;
+}
+.stats-bars > div:nth-child(2) i { animation-delay: 40ms; }
+.stats-bars > div:nth-child(3) i { animation-delay: 80ms; }
+.stats-bars > div:nth-child(4) i { animation-delay: 120ms; }
+.stats-bars > div:nth-child(5) i { animation-delay: 160ms; }
+.stats-bars > div:nth-child(6) i { animation-delay: 200ms; }
+.stats-bars > div:nth-child(7) i { animation-delay: 240ms; }
+.donut {
+  animation: donut-reveal 560ms var(--ease-out) both;
+}
+.calendar-day.selected {
+  animation: calendar-select 220ms var(--ease-out) both;
+}
+
+.auth-dialog > * {
+  animation: dialog-content 300ms var(--ease-out) both;
+}
+.auth-dialog > *:nth-child(2) { animation-delay: 25ms; }
+.auth-dialog > *:nth-child(3) { animation-delay: 45ms; }
+.auth-dialog > *:nth-child(n+4) { animation-delay: 65ms; }
+
+@media (hover: hover) and (pointer: fine) {
+  .home-quick-subjects button,
+  .subject-timer-row,
+  .settings-subject,
+  .account-menu > button,
+  .timeline-record-list button {
+    transition:
+      transform var(--motion-quick) var(--ease-out),
+      background-color var(--motion-base) var(--ease-soft),
+      border-color var(--motion-base) var(--ease-soft);
+  }
+  .home-quick-subjects button:hover,
+  .subject-timer-row:hover,
+  .settings-subject:hover,
+  .account-menu > button:hover {
+    transform: translateX(3px);
+  }
+  .calendar-day:hover {
+    transform: translateY(-2px);
+  }
+  .analytics-card:hover,
+  .planner-card:hover,
+  .home-study-bottom:hover,
+  .profile-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px rgba(49, 42, 38, .09);
+  }
+  .dark :is(.analytics-card, .planner-card, .home-study-bottom, .profile-card):hover {
+    box-shadow: 0 15px 38px rgba(0, 0, 0, .22);
+  }
+}
+
+@keyframes frame-arrive {
+  from { opacity: 0; transform: translateY(8px) scale(.995); }
+}
+@keyframes topbar-settle {
+  from { opacity: 0; transform: translateY(-5px); }
+}
+@keyframes screen-enter {
+  from { opacity: 0; transform: translateY(6px); }
+}
+@keyframes surface-enter {
+  from { opacity: 0; transform: translateY(7px); }
+}
+@keyframes row-enter {
+  from { opacity: 0; transform: translateY(4px); }
+}
+@keyframes brand-dot-settle {
+  from { opacity: 0; transform: translateY(-5px) scale(.8); }
+}
+@keyframes nav-icon-set {
+  0% { transform: translateY(2px) scale(.94); }
+  100% { transform: translateY(0) scale(1.06); }
+}
+@keyframes theme-icon-turn {
+  from { opacity: .25; transform: rotate(-22deg) scale(.9); }
+}
+@keyframes check-set {
+  0% { transform: scale(.72) rotate(-9deg); }
+  65% { transform: scale(1.1) rotate(-4deg); }
+  100% { transform: scale(1.08) rotate(-5deg); }
+}
+@keyframes disclosure-open {
+  from { opacity: 0; transform: translateY(-4px) scaleY(.97); }
+}
+@keyframes message-enter {
+  from { opacity: 0; transform: translateY(-3px); }
+}
+@keyframes focus-settle {
+  0% { transform: scale(.992); }
+  100% { transform: scale(1); }
+}
+@keyframes signal-breathe {
+  0%, 100% { opacity: .72; box-shadow: 0 0 0 0 color-mix(in srgb, var(--subject) 24%, transparent); }
+  50% { opacity: 1; box-shadow: 0 0 0 5px color-mix(in srgb, var(--subject) 0%, transparent); }
+}
+@keyframes time-focus {
+  from { opacity: .72; transform: translateY(2px); }
+}
+@keyframes toast-enter {
+  from { opacity: 0; transform: translate(-50%, 6px) scale(.98); }
+}
+@keyframes highlight-in {
+  from { opacity: 0; transform: scaleY(.55); filter: saturate(.7); }
+}
+@keyframes live-highlight {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.08); }
+}
+@keyframes bar-grow {
+  from { transform: scaleY(0); opacity: .35; }
+}
+@keyframes donut-reveal {
+  from { opacity: 0; transform: scale(.94) rotate(-5deg); }
+}
+@keyframes calendar-select {
+  50% { transform: scale(.965); }
+}
+@keyframes dialog-content {
+  from { opacity: 0; transform: translateY(4px); }
+}
