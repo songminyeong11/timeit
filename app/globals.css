@@ -16,19 +16,23 @@ button { border: 0; cursor: pointer; color: inherit; }
 .phone-frame { position: relative; width: min(100%, 460px); height: min(900px, calc(100dvh - 44px)); min-height: 680px; overflow: hidden; background: var(--paper); border: 1px solid rgba(255,255,255,.85); border-radius: 32px; box-shadow: 0 28px 80px rgba(55, 47, 42, .16), 0 4px 10px rgba(55, 47, 42, .06); transition: background .3s ease, color .3s ease; }
 .content-scroll { height: calc(100% - 70px); padding: 0 19px 104px; overflow-y: auto; scrollbar-width: none; }
 .content-scroll::-webkit-scrollbar { display: none; }
-.topbar { height: 70px; display: grid; grid-template-columns: 68px 1fr 68px; align-items: center; padding: 16px 20px 10px; background: color-mix(in srgb, var(--paper) 92%, transparent); position: relative; z-index: 2; }
+.topbar { height: 70px; display: grid; grid-template-columns: 68px 1fr auto; align-items: center; padding: 16px 20px 10px; background: color-mix(in srgb, var(--paper) 92%, transparent); position: relative; z-index: 2; }
 .avatar, .round-control { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; transition: all .3s ease; }
 .avatar { background: #f1d9c6; font-size: 13px; font-weight: 800; color: #8c5c45; }
 .round-control { background: #f2f0ec; color: #74727b; font-size: 15px; }
 .round-control:hover, .avatar:hover { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(57,52,48,.1); }
 .brand { font-size: 21px; font-weight: 850; letter-spacing: -.09em; color: #28272e; }
 .brand span { font-size: 20px; color: #df947f; margin-left: 1px; }
-.brand { justify-self: center; }
+.brand { position: absolute; left: 50%; justify-self: center; transform: translateX(-50%); }
 .topbar-spacer { width: 34px; height: 34px; }
 .auth-trigger { min-width: 54px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; gap: 5px; padding: 0 10px; border: 1px solid #e6dfda; border-radius: 13px; background: rgba(255,255,255,.72); color: #756b68; box-shadow: 0 3px 10px rgba(66,55,48,.05); font-size: 9px; font-weight: 850; transition: all .3s ease; }
 .auth-trigger:hover:not(:disabled) { transform: translateY(-1px); border-color: #d7c8c0; box-shadow: 0 6px 14px rgba(66,55,48,.09); }
 .auth-trigger:disabled { cursor: wait; opacity: .5; }
 .auth-trigger i { width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; background: var(--profile-color, #e5a089); color: #fff; font-size: 8px; font-style: normal; }
+.topbar-actions { display: flex; align-items: center; justify-self: end; gap: 6px; }
+.quick-theme-toggle { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border: 1px solid #e6dfda; border-radius: 13px; background: rgba(255,255,255,.72); color: #746d6a; box-shadow: 0 3px 10px rgba(66,55,48,.05); transition: transform .25s ease, border-color .25s ease, background .25s ease; }
+.quick-theme-toggle svg { width: 14px; height: 14px; stroke-width: 1.9; }
+.quick-theme-toggle:hover { transform: translateY(-1px); border-color: #d7c8c0; background: #fff; }
 .icon { font-family: Arial, sans-serif; line-height: 1; }
 .hero-card { position: relative; min-height: 206px; overflow: hidden; padding: 20px 21px; border-radius: 24px; background: linear-gradient(135deg, #f4dfd1, #f7eee4 64%, #e9edf1); box-shadow: inset 0 1px 0 rgba(255,255,255,.6); }
 .hero-topline { position: relative; z-index: 1; display: flex; justify-content: space-between; color: #8a7a73; font-size: 11px; font-weight: 650; letter-spacing: -.02em; }
@@ -347,6 +351,8 @@ button { border: 0; cursor: pointer; color: inherit; }
 .account-sync-state i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #75a183; box-shadow: 0 0 0 4px rgba(117,161,131,.14); }
 .auth-logout { margin-top: 17px; background: #eee8e4; color: #776c69; box-shadow: none; }
 .dark .auth-trigger { border-color: #424a4a; background: #303737; color: #eee7e1; box-shadow: none; }
+.dark .quick-theme-toggle { border-color: #424a4a; background: #303737; color: #f1c994; box-shadow: none; }
+.dark .quick-theme-toggle:hover { border-color: #566061; background: #374041; }
 .dark .auth-dialog { border-color: #3b4343; background: #252b2c; box-shadow: 0 30px 90px rgba(0,0,0,.42); }
 .dark .auth-dialog h2 { color: #f4eee8; }
 .dark .auth-description, .dark .account-email { color: #bdb5b0; }
@@ -361,7 +367,9 @@ button { border: 0; cursor: pointer; color: inherit; }
 @keyframes auth-rise { from { opacity: 0; transform: translateY(9px) scale(.98); } }
 
 @media (max-width: 540px) {
-  .topbar { grid-template-columns: 62px 1fr 62px; padding-left: 16px; padding-right: 16px; }
+  .topbar { grid-template-columns: 42px 1fr auto; padding-left: 16px; padding-right: 16px; }
+  .topbar-actions { gap: 5px; }
+  .quick-theme-toggle { width: 31px; height: 31px; }
   .auth-trigger { min-width: 50px; padding: 0 8px; }
   .auth-trigger.signed-in span { display: none; }
   .auth-dialog { padding: 26px 22px; border-radius: 27px; }
@@ -534,4 +542,146 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .study-calendar-grid { grid-auto-rows: 50px; gap: 4px; }
   .auth-overlay { align-items: end; padding: 12px; }
   .auth-dialog { width: 100%; padding: 30px 24px calc(26px + env(safe-area-inset-bottom)); border-radius: 28px; }
+}
+
+/* Account recovery and profile management share the same calm account surface. */
+.forgot-password-button {
+  display: block;
+  margin: 9px auto 0;
+  padding: 5px 8px;
+  color: #817a77;
+  font-size: 10.5px;
+  line-height: 1.4;
+  text-decoration: none;
+}
+.forgot-password-button b { color: #b66f5e; font-weight: 750; }
+.forgot-password-button:hover { color: #4f4947; }
+.recovery-code-card {
+  display: grid;
+  gap: 9px;
+  margin: 4px 0 18px;
+  padding: 17px;
+  border: 1px solid #e2d9d2;
+  border-radius: 18px;
+  background: #f7f2ed;
+  text-align: center;
+}
+.recovery-code-card span { color: #7e7672; font-size: 10px; font-weight: 650; }
+.recovery-code-card strong { color: #302c2d; font-size: 17px; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+.recovery-code-card button { justify-self: center; padding: 7px 11px; border-radius: 10px; background: #e9e1db; color: #665e5b; font-size: 10px; font-weight: 700; }
+.account-dialog { width: min(100%, 430px); max-height: min(780px, calc(100dvh - 36px)); overflow-y: auto; scrollbar-width: none; }
+.account-dialog::-webkit-scrollbar { display: none; }
+.account-sheet-head { padding-right: 36px; }
+.account-sheet-head h2 { margin-top: 0; }
+.account-sheet-head p { margin: 7px 0 21px; color: #817a77; font-size: 12px; }
+.account-identity {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid #e5ded8;
+  border-radius: 20px;
+  background: #f8f5f1;
+}
+.account-identity .account-avatar { width: 54px; height: 54px; margin: 0; border-radius: 18px; font-size: 20px; }
+.account-identity > div:nth-child(2) { display: grid; min-width: 0; }
+.account-identity strong { overflow: hidden; color: #393435; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.account-identity small { overflow: hidden; margin-top: 3px; color: #8c8582; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.account-identity span { overflow: hidden; margin-top: 5px; color: #a0786e; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.account-identity > button { padding: 8px 10px; border-radius: 11px; background: #ebe4de; color: #665e5b; font-size: 10px; font-weight: 700; }
+.account-edit-panel, .account-inline-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 16px;
+  border: 1px solid #e5ded8;
+  border-radius: 19px;
+  background: #fcfaf7;
+}
+.account-edit-panel label, .account-inline-form label { display: grid; gap: 6px; color: #625b58; font-size: 10px; font-weight: 700; }
+.account-edit-panel input, .account-inline-form input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #ddd5cf;
+  border-radius: 12px;
+  outline: none;
+  background: #fff;
+  color: #302d2e;
+  font-size: 12px;
+}
+.account-color-picker { display: grid; gap: 8px; color: #625b58; font-size: 10px; font-weight: 700; }
+.account-color-picker > div { display: flex; gap: 9px; }
+.account-color-picker button { width: 25px; height: 25px; border: 3px solid transparent; border-radius: 50%; box-shadow: 0 0 0 1px rgba(72,62,58,.08); }
+.account-color-picker button.selected { border-color: #fff; box-shadow: 0 0 0 2px #746b67; }
+.account-save-button, .account-inline-form > button {
+  min-height: 41px;
+  border-radius: 13px;
+  background: #34393b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+}
+.account-menu {
+  overflow: hidden;
+  margin-top: 14px;
+  border: 1px solid #e5ded8;
+  border-radius: 19px;
+  background: #fff;
+}
+.account-menu > button {
+  width: 100%;
+  min-height: 49px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 15px;
+  color: #494344;
+  text-align: left;
+}
+.account-menu > button + button { border-top: 1px solid #eee8e3; }
+.account-menu > button span { font-size: 12px; font-weight: 650; }
+.account-menu > button small { color: #9b9390; font-size: 9px; }
+.account-menu > button b { color: #9a928f; font-size: 20px; font-weight: 400; }
+.account-inline-form p { margin: 0 0 2px; color: #817976; font-size: 10px; line-height: 1.5; }
+.account-message { margin: 10px 2px 0; color: #8a665c; font-size: 10px; font-weight: 650; text-align: center; }
+.account-logout-button {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 14px;
+  border-radius: 15px;
+  background: #eee9e5;
+  color: #746b68;
+  font-size: 11px;
+  font-weight: 700;
+}
+.dark .forgot-password-button { color: #c0b8b3; }
+.dark .forgot-password-button b { color: #f3a48e; }
+.dark .recovery-code-card { border-color: #465051; background: #303839; }
+.dark .recovery-code-card span { color: #bbb2ad; }
+.dark .recovery-code-card strong { color: #fff4ec; }
+.dark .recovery-code-card button { background: #444d4e; color: #eee6e1; }
+.dark .account-sheet-head p { color: #bdb5b0; }
+.dark .account-identity, .dark .account-edit-panel, .dark .account-inline-form { border-color: #414b4c; background: #2f3738; }
+.dark .account-identity strong { color: #f5efea; }
+.dark .account-identity small { color: #b9b1ad; }
+.dark .account-identity span { color: #eba08d; }
+.dark .account-identity > button { background: #424b4c; color: #eee6e1; }
+.dark .account-edit-panel label, .dark .account-inline-form label, .dark .account-color-picker { color: #d7cfca; }
+.dark .account-edit-panel input, .dark .account-inline-form input { border-color: #4a5556; background: #272e2f; color: #f8f3ed; }
+.dark .account-save-button, .dark .account-inline-form > button { background: #eee8e2; color: #252b2c; }
+.dark .account-menu { border-color: #414b4c; background: #303839; }
+.dark .account-menu > button { color: #eee7e2; }
+.dark .account-menu > button + button { border-color: #424c4d; }
+.dark .account-menu > button small, .dark .account-menu > button b { color: #aaa29e; }
+.dark .account-inline-form p { color: #bdb5b0; }
+.dark .account-message { color: #f0aa96; }
+.dark .account-logout-button { background: #3b4445; color: #eee6e1; }
+
+@media (max-width: 540px) {
+  .account-dialog { max-height: calc(100dvh - 18px); }
+  .account-identity { grid-template-columns: 50px minmax(0, 1fr) auto; padding: 13px; }
+  .account-identity .account-avatar { width: 50px; height: 50px; }
 }

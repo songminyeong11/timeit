@@ -128,6 +128,15 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /className=\{`auth-trigger/);
   assert.match(page, /function AuthDialog/);
   assert.match(page, /\/api\/auth\/session/);
+  assert.match(page, /reset-password/);
+  assert.match(page, /비밀번호를 잊으셨나요/);
+  assert.match(page, /function RecoveryCodeCard/);
+  assert.match(page, /\/api\/account\/profile/);
+  assert.match(page, /\/api\/account\/password/);
+  assert.match(page, /\/api\/account\/recovery-code/);
+  assert.match(page, /aria-label="계정 정보 열기"/);
+  assert.match(page, /className="quick-theme-toggle"/);
+  assert.match(page, /다크 모드로 변경/);
   assert.match(page, /\/api\/user-data/);
   assert.match(page, /accountDataReady/);
   assert.match(page, /else setIsAuthOpen\(true\)/);
@@ -136,6 +145,12 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.dark \.calendar-day\.grass-0 \{ background: #303738; \}/);
   assert.match(css, /\.dark \.calendar-day\.grass-4 \{ background: #5f936e;/);
   assert.match(css, /\.dark \.auth-form input::placeholder/);
+  assert.match(css, /\.forgot-password-button/);
+  assert.match(css, /\.account-dialog/);
+  assert.match(css, /\.dark \.account-identity/);
+  assert.match(css, /\.recovery-code-card/);
+  assert.match(css, /\.quick-theme-toggle/);
+  assert.match(css, /\.dark \.quick-theme-toggle/);
   assert.equal(JSON.parse(hosting).d1, "DB");
   assert.match(workerIndex, /handleAuthRequest/);
   assert.match(workerAuth, /PBKDF2/);
@@ -143,6 +158,9 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(workerAuth, /HttpOnly; Secure; SameSite=Lax/);
   assert.match(workerAuth, /origin === new URL\(request\.url\)\.origin/);
   assert.match(workerAuth, /ON CONFLICT\(user_id\) DO UPDATE/);
+  assert.match(workerAuth, /\/api\/auth\/reset-password/);
+  assert.match(workerAuth, /\/api\/account\/profile/);
+  assert.match(workerAuth, /recovery_hash/);
   assert.doesNotMatch(workerAuth, /localStorage/);
   assert.match(page, /"중지"/);
 });

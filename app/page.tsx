@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BarChart3, CalendarDays, House, Settings2, Timer } from "lucide-react";
+import { BarChart3, CalendarDays, House, Moon, Settings2, Sun, Timer } from "lucide-react";
 import { getKoreanHolidays } from "./korean-holidays";
 
 type Screen = "home" | "planner" | "timer" | "stats" | "settings";
@@ -80,6 +80,7 @@ type AccountData = {
   plannerTheme: PlannerTheme;
   profileName: string;
   profileColor: string;
+  profileStatus: string;
 };
 
 const GOOGLE_CLIENT_ID = "322831832887-fm9l7tdqbp1qgfd6v52rirbt4b1nmdt6.apps.googleusercontent.com";
@@ -339,6 +340,7 @@ export default function Home() {
   const [plannerTheme, setPlannerTheme] = useState<PlannerTheme>("milk");
   const [profileName, setProfileName] = useState("");
   const [profileColor, setProfileColor] = useState("#e5a089");
+  const [profileStatus, setProfileStatus] = useState("");
   const [plannerDate, setPlannerDate] = useState(() => dateKey());
   const [calendarSchedules, setCalendarSchedules] = useState<CalendarSchedule[]>([]);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
@@ -363,6 +365,7 @@ export default function Home() {
     const savedPlannerTheme = window.localStorage.getItem("timeit-planner-theme");
     const savedProfileName = window.localStorage.getItem("timeit-profile-name");
     const savedProfileColor = window.localStorage.getItem("timeit-profile-color");
+    const savedProfileStatus = window.localStorage.getItem("timeit-profile-status");
     const lightDefaultApplied = window.localStorage.getItem("timeit-light-default-v1");
     const storageVersion = window.localStorage.getItem("timeit-storage-version");
     if (storageVersion !== expectedStorageVersion) {
@@ -404,6 +407,7 @@ export default function Home() {
     if (savedPlannerTheme === "milk" || savedPlannerTheme === "fog" || savedPlannerTheme === "rose") setPlannerTheme(savedPlannerTheme);
     if (storageVersion === expectedStorageVersion && savedProfileName) setProfileName(savedProfileName);
     if (storageVersion === expectedStorageVersion && savedProfileColor) setProfileColor(savedProfileColor);
+    if (storageVersion === expectedStorageVersion && savedProfileStatus) setProfileStatus(savedProfileStatus);
     window.localStorage.removeItem("timeit-calendar-schedules");
     setStorageReady(true);
   }, []);
@@ -444,6 +448,11 @@ export default function Home() {
     window.localStorage.setItem("timeit-profile-color", profileColor);
   }, [profileColor, storageReady]);
 
+  useEffect(() => {
+    if (!storageReady) return;
+    window.localStorage.setItem("timeit-profile-status", profileStatus);
+  }, [profileStatus, storageReady]);
+
   const accountSnapshot = (): AccountData => ({
     subjects,
     todos,
@@ -453,6 +462,7 @@ export default function Home() {
     plannerTheme,
     profileName,
     profileColor,
+    profileStatus,
   });
 
   const applyAccountData = (data: AccountData, user: AuthUser) => {
@@ -465,6 +475,7 @@ export default function Home() {
     if (data.plannerTheme === "milk" || data.plannerTheme === "fog" || data.plannerTheme === "rose") setPlannerTheme(data.plannerTheme);
     setProfileName(typeof data.profileName === "string" && data.profileName.trim() ? data.profileName : user.name);
     if (typeof data.profileColor === "string" && /^#[0-9a-f]{6}$/i.test(data.profileColor)) setProfileColor(data.profileColor);
+    setProfileStatus(typeof data.profileStatus === "string" ? data.profileStatus : "");
   };
 
   const saveAccountData = async (data: AccountData) => {
@@ -513,12 +524,19 @@ export default function Home() {
       void saveAccountData(accountSnapshot());
     }, 650);
     return () => window.clearTimeout(timeout);
-  }, [accountDataReady, authReady, authUser, isDark, plannerTheme, profileColor, profileName, selectedSubject, storageReady, studyLogs, subjects, todos]);
+  }, [accountDataReady, authReady, authUser, isDark, plannerTheme, profileColor, profileName, profileStatus, selectedSubject, storageReady, studyLogs, subjects, todos]);
 
   const handleAuthenticated = async (user: AuthUser) => {
     await loadAccountData(user);
     setAuthReady(true);
     setIsAuthOpen(false);
+  };
+
+  const handleAccountProfileUpdate = (user: AuthUser, nextName: string, nextColor: string, nextStatus: string) => {
+    setAuthUser(user);
+    setProfileName(nextName);
+    setProfileColor(nextColor);
+    setProfileStatus(nextStatus);
   };
 
   const handleLogout = async () => {
@@ -531,10 +549,11 @@ export default function Home() {
     setSelectedSubject(initialSubjects[0].id);
     setProfileName("");
     setProfileColor("#e5a089");
+    setProfileStatus("");
     setIsRunning(false);
     setSeconds(0);
     setSessionStartMinutes(null);
-    ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-profile-name", "timeit-profile-color"].forEach((key) => window.localStorage.removeItem(key));
+    ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-profile-name", "timeit-profile-color", "timeit-profile-status"].forEach((key) => window.localStorage.removeItem(key));
     setIsAuthOpen(false);
   };
 
@@ -795,11 +814,16 @@ export default function Home() {
     <main className={`app-shell planner-theme-${plannerTheme} ${isDark ? "dark" : ""} ${isRunning && screen === "timer" ? "focus-active" : ""}`} style={{ "--profile-color": profileColor } as React.CSSProperties}>
       <section className="phone-frame">
         <header className="topbar">
-          <button className="avatar" aria-label="프로필">{profileName.trim().slice(0, 1) || "나"}</button>
+          <button className="avatar" onClick={() => setIsAuthOpen(true)} aria-label="계정 정보 열기">{profileName.trim().slice(0, 1) || "나"}</button>
           <div className="brand">timeit<span>°</span></div>
-          <button className={`auth-trigger ${authUser ? "signed-in" : ""}`} onClick={() => setIsAuthOpen(true)} disabled={!authReady} aria-label={authUser ? "내 계정 열기" : "로그인 및 회원가입"}>
-            {authUser ? <><i>{authUser.name.slice(0, 1)}</i><span>내 계정</span></> : "로그인"}
-          </button>
+          <div className="topbar-actions">
+            <button className="quick-theme-toggle" onClick={() => setIsDark((value) => !value)} aria-label={isDark ? "라이트 모드로 변경" : "다크 모드로 변경"} title={isDark ? "라이트 모드" : "다크 모드"}>
+              {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+            </button>
+            <button className={`auth-trigger ${authUser ? "signed-in" : ""}`} onClick={() => setIsAuthOpen(true)} disabled={!authReady} aria-label={authUser ? "내 계정 열기" : "로그인 및 회원가입"}>
+              {authUser ? <><i>{authUser.name.slice(0, 1)}</i><span>내 계정</span></> : "로그인"}
+            </button>
+          </div>
         </header>
 
         <div className="content-scroll">
@@ -830,18 +854,38 @@ export default function Home() {
           ))}
         </nav>
       </section>
-      {isAuthOpen && <AuthDialog user={authUser} onClose={() => setIsAuthOpen(false)} onAuthenticated={handleAuthenticated} onLogout={handleLogout} />}
+      {isAuthOpen && <AuthDialog user={authUser} profileName={profileName} profileColor={profileColor} profileStatus={profileStatus} onClose={() => setIsAuthOpen(false)} onAuthenticated={handleAuthenticated} onProfileUpdate={handleAccountProfileUpdate} onLogout={handleLogout} />}
     </main>
   );
 }
 
-function AuthDialog({ user, onClose, onAuthenticated, onLogout }: { user: AuthUser | null; onClose: () => void; onAuthenticated: (user: AuthUser) => Promise<void>; onLogout: () => Promise<void> }) {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, onAuthenticated, onProfileUpdate, onLogout }: {
+  user: AuthUser | null;
+  profileName: string;
+  profileColor: string;
+  profileStatus: string;
+  onClose: () => void;
+  onAuthenticated: (user: AuthUser) => Promise<void>;
+  onProfileUpdate: (user: AuthUser, name: string, color: string, status: string) => void;
+  onLogout: () => Promise<void>;
+}) {
+  const [mode, setMode] = useState<"login" | "signup" | "reset">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [recoveryInput, setRecoveryInput] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [pendingUser, setPendingUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [accountEditing, setAccountEditing] = useState(false);
+  const [accountSection, setAccountSection] = useState<"none" | "password" | "recovery">("none");
+  const [draftName, setDraftName] = useState(profileName || user?.name || "");
+  const [draftStatus, setDraftStatus] = useState(profileStatus);
+  const [draftColor, setDraftColor] = useState(profileColor);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [accountMessage, setAccountMessage] = useState("");
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -854,13 +898,25 @@ function AuthDialog({ user, onClose, onAuthenticated, onLogout }: { user: AuthUs
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/auth/${mode === "login" ? "login" : "signup"}`, {
+      const path = mode === "reset" ? "reset-password" : mode;
+      const response = await fetch(`/api/auth/${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify(mode === "reset" ? { email, recoveryCode: recoveryInput, password } : { name, email, password }),
       });
-      const payload = await response.json() as { user?: AuthUser; error?: string };
-      if (!response.ok || !payload.user) throw new Error(payload.error || "로그인을 완료하지 못했어요.");
+      const payload = await response.json() as { user?: AuthUser; recoveryCode?: string; ok?: boolean; error?: string };
+      if (!response.ok) throw new Error(payload.error || "요청을 완료하지 못했어요.");
+      if (mode === "reset") {
+        if (!payload.recoveryCode) throw new Error("새 복구 코드를 만들지 못했어요.");
+        setRecoveryCode(payload.recoveryCode);
+        return;
+      }
+      if (!payload.user) throw new Error("로그인을 완료하지 못했어요.");
+      if (mode === "signup" && payload.recoveryCode) {
+        setPendingUser(payload.user);
+        setRecoveryCode(payload.recoveryCode);
+        return;
+      }
       await onAuthenticated(payload.user);
     } catch (reason) {
       setError(reason instanceof Error && reason.message !== "account-load-failed" ? reason.message : "계정 데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
@@ -869,34 +925,142 @@ function AuthDialog({ user, onClose, onAuthenticated, onLogout }: { user: AuthUs
     }
   };
 
+  const saveProfile = async () => {
+    if (!user) return;
+    setBusy(true);
+    setAccountMessage("");
+    try {
+      const response = await fetch("/api/account/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: draftName }),
+      });
+      const payload = await response.json() as { user?: AuthUser; error?: string };
+      if (!response.ok || !payload.user) throw new Error(payload.error || "프로필을 저장하지 못했어요.");
+      onProfileUpdate(payload.user, draftName.trim(), draftColor, draftStatus.trim());
+      setAccountEditing(false);
+      setAccountMessage("계정 정보가 저장됐어요.");
+    } catch (reason) {
+      setAccountMessage(reason instanceof Error ? reason.message : "프로필을 저장하지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setAccountMessage("");
+    try {
+      const response = await fetch("/api/account/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "비밀번호를 변경하지 못했어요.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setAccountSection("none");
+      setAccountMessage("비밀번호가 변경됐어요.");
+    } catch (reason) {
+      setAccountMessage(reason instanceof Error ? reason.message : "비밀번호를 변경하지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const issueRecoveryCode = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setAccountMessage("");
+    try {
+      const response = await fetch("/api/account/recovery-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword }),
+      });
+      const payload = await response.json() as { recoveryCode?: string; error?: string };
+      if (!response.ok || !payload.recoveryCode) throw new Error(payload.error || "복구 코드를 만들지 못했어요.");
+      setRecoveryCode(payload.recoveryCode);
+      setCurrentPassword("");
+    } catch (reason) {
+      setAccountMessage(reason instanceof Error ? reason.message : "복구 코드를 만들지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return <div className="auth-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <section className={`auth-dialog ${user ? "account-dialog" : ""}`} role="dialog" aria-modal="true" aria-labelledby="auth-title">
       <button className="auth-close" onClick={onClose} aria-label="닫기">×</button>
       {user ? <>
-        <div className="account-avatar">{user.name.slice(0, 1)}</div>
-        <span className="section-kicker">TIMEIT</span>
-        <h2 id="auth-title">{user.name}님의 계정</h2>
-        <p className="account-email">{user.email}</p>
-        <div className="account-sync-state"><i />로그인한 기기에서 공부 기록을 이어볼 수 있어요.</div>
-        <button className="auth-primary auth-logout" onClick={() => void onLogout()}>로그아웃</button>
-      </> : <>
-        <span className="section-kicker">TIMEIT</span>
-        <h2 id="auth-title">{mode === "login" ? "로그인" : "타임잇 시작하기"}</h2>
-        <p className="auth-description">{mode === "login" ? "저장한 공부 기록을 불러와 바로 이어서 시작하세요." : "기록을 안전하게 저장하고 다른 기기에서도 이어서 사용할 수 있어요."}</p>
-        <div className="auth-tabs" role="tablist">
-          <button role="tab" aria-selected={mode === "login"} className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>로그인</button>
-          <button role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "selected" : ""} onClick={() => { setMode("signup"); setError(""); }}>회원가입</button>
+        <div className="account-sheet-head"><span className="section-kicker">MY ACCOUNT</span><h2 id="auth-title">계정 정보</h2><p>내 프로필과 로그인 정보를 관리해요.</p></div>
+        <div className="account-identity">
+          <div className="account-avatar" style={{ background: draftColor }}>{draftName.trim().slice(0, 1) || "나"}</div>
+          <div><strong>{draftName || user.name}</strong><small>{user.email}</small><span>{draftStatus || "상태 메시지를 설정해보세요."}</span></div>
+          <button onClick={() => { setAccountEditing((value) => !value); setAccountMessage(""); }}>{accountEditing ? "취소" : "수정"}</button>
         </div>
-        <form className="auth-form" onSubmit={submit}>
-          {mode === "signup" && <label><span>이름</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="사용할 이름" minLength={2} maxLength={24} autoFocus required /></label>}
-          <label><span>이메일</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@example.com" autoFocus={mode === "login"} required /></label>
-          <label><span>비밀번호</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상" minLength={8} maxLength={128} required /></label>
-          {error && <p className="auth-error" role="alert">{error}</p>}
-          <button className="auth-primary" type="submit" disabled={busy}>{busy ? "확인 중…" : mode === "login" ? "로그인" : "회원가입"}</button>
-        </form>
-        <small className="auth-security-note">비밀번호는 암호화되어 안전하게 보관됩니다.</small>
+        {accountEditing && <div className="account-edit-panel">
+          <label><span>이름</span><input value={draftName} onChange={(event) => setDraftName(event.target.value)} minLength={2} maxLength={24} /></label>
+          <label><span>상태 메시지</span><input value={draftStatus} onChange={(event) => setDraftStatus(event.target.value)} maxLength={40} placeholder="예: 오늘도 한 걸음씩" /></label>
+          <div className="account-color-picker"><span>프로필 색상</span><div>{["#e5a089", "#8d9bc4", "#7eae99", "#b78aac", "#8b827c"].map((color) => <button type="button" className={draftColor === color ? "selected" : ""} onClick={() => setDraftColor(color)} style={{ background: color }} aria-label={`${color} 프로필 색상`} key={color} />)}</div></div>
+          <button className="account-save-button" onClick={() => void saveProfile()} disabled={busy}>변경사항 저장</button>
+        </div>}
+        <div className="account-menu">
+          <button onClick={() => { setAccountSection(accountSection === "password" ? "none" : "password"); setRecoveryCode(""); setAccountMessage(""); }}><span>비밀번호 변경</span><b>›</b></button>
+          <button onClick={() => { setAccountSection(accountSection === "recovery" ? "none" : "recovery"); setRecoveryCode(""); setAccountMessage(""); }}><span>복구 코드 관리</span><small>분실 대비</small><b>›</b></button>
+        </div>
+        {accountSection === "password" && <form className="account-inline-form" onSubmit={changePassword}>
+          <label><span>현재 비밀번호</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></label>
+          <label><span>새 비밀번호</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={8} placeholder="8자 이상" required /></label>
+          <button disabled={busy}>비밀번호 변경</button>
+        </form>}
+        {accountSection === "recovery" && <form className="account-inline-form" onSubmit={issueRecoveryCode}>
+          <p>비밀번호를 잊었을 때 사용할 새 복구 코드를 발급합니다. 기존 코드는 즉시 만료돼요.</p>
+          <label><span>현재 비밀번호</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></label>
+          <button disabled={busy}>새 복구 코드 발급</button>
+        </form>}
+        {recoveryCode && <RecoveryCodeCard code={recoveryCode} />}
+        {accountMessage && <p className="account-message" role="status">{accountMessage}</p>}
+        <button className="account-logout-button" onClick={() => void onLogout()}>로그아웃</button>
+      </> : <>
+        {recoveryCode ? <>
+          <span className="section-kicker">RECOVERY KEY</span>
+          <h2 id="auth-title">{pendingUser ? "복구 코드를 저장해 주세요" : "비밀번호가 변경됐어요"}</h2>
+          <p className="auth-description">이 코드는 다시 표시되지 않습니다. 안전한 곳에 보관해 주세요.</p>
+          <RecoveryCodeCard code={recoveryCode} />
+          <button className="auth-primary" onClick={() => pendingUser ? void onAuthenticated(pendingUser) : (setMode("login"), setRecoveryCode(""), setPassword(""), setRecoveryInput(""))}>{pendingUser ? "저장했어요, 시작하기" : "로그인으로 돌아가기"}</button>
+        </> : <>
+          <span className="section-kicker">TIMEIT</span>
+          <h2 id="auth-title">{mode === "login" ? "로그인" : mode === "signup" ? "타임잇 시작하기" : "비밀번호 찾기"}</h2>
+          <p className="auth-description">{mode === "login" ? "저장한 공부 기록을 불러와 바로 이어서 시작하세요." : mode === "signup" ? "기록을 안전하게 저장하고 다른 기기에서도 이어서 사용할 수 있어요." : "가입 이메일과 보관해 둔 복구 코드로 새 비밀번호를 설정하세요."}</p>
+          {mode !== "reset" && <div className="auth-tabs" role="tablist">
+            <button role="tab" aria-selected={mode === "login"} className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>로그인</button>
+            <button role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "selected" : ""} onClick={() => { setMode("signup"); setError(""); }}>회원가입</button>
+          </div>}
+          <form className="auth-form" onSubmit={submit}>
+            {mode === "signup" && <label><span>이름</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="사용할 이름" minLength={2} maxLength={24} autoFocus required /></label>}
+            <label><span>이메일</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@example.com" autoFocus={mode !== "signup"} required /></label>
+            {mode === "reset" && <label><span>복구 코드</span><input value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value.toUpperCase())} autoComplete="off" placeholder="XXXX-XXXX-XXXX-XXXX" required /></label>}
+            <label><span>{mode === "reset" ? "새 비밀번호" : "비밀번호"}</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상" minLength={8} maxLength={128} required /></label>
+            {error && <p className="auth-error" role="alert">{error}</p>}
+            <button className="auth-primary" type="submit" disabled={busy}>{busy ? "확인 중…" : mode === "login" ? "로그인" : mode === "signup" ? "회원가입" : "새 비밀번호 설정"}</button>
+          </form>
+          <small className="auth-security-note">비밀번호는 암호화되어 안전하게 보관됩니다.</small>
+          {mode === "login" ? <button className="forgot-password-button" onClick={() => { setMode("reset"); setError(""); setPassword(""); }}>비밀번호를 잊으셨나요? <b>비밀번호 찾기</b></button> : mode === "reset" ? <button className="forgot-password-button" onClick={() => { setMode("login"); setError(""); }}>로그인으로 돌아가기</button> : null}
+        </>}
       </>}
     </section>
+  </div>;
+}
+
+function RecoveryCodeCard({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  return <div className="recovery-code-card">
+    <span>내 복구 코드</span>
+    <strong>{code}</strong>
+    <button type="button" onClick={() => { void navigator.clipboard?.writeText(code); setCopied(true); }}>{copied ? "복사됨" : "코드 복사"}</button>
   </div>;
 }
 
