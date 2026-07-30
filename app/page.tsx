@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BarChart3, Bell, CalendarDays, Check, ChevronRight, CloudOff, Database, Download, House, LoaderCircle, Moon, Palette, Settings, ShieldCheck, Sun, Timer, Trash2, UserRound, UsersRound, Volume2 } from "lucide-react";
+import { BarChart3, Bell, CalendarDays, ChevronRight, CloudOff, Database, Download, House, Moon, Palette, Settings, ShieldCheck, Sun, Timer, Trash2, UserRound, UsersRound, Volume2 } from "lucide-react";
 import { getKoreanHolidays } from "./korean-holidays";
 import { GroupScreen } from "./group-screen";
 
@@ -1198,21 +1198,21 @@ export default function Home() {
           <button className="avatar" onClick={() => setIsAuthOpen(true)} aria-label="계정 정보 열기">{profileName.trim().slice(0, 1) || "나"}</button>
           <div className="brand">timeit<span>°</span></div>
           <div className="topbar-actions">
-            {authUser && <button
-              className={`sync-indicator ${syncState}`}
+            {authUser && syncState === "error" && <button
+              className="sync-indicator error"
               onClick={() => { if (syncState === "error") setSyncRetryKey((value) => value + 1); }}
-              disabled={syncState !== "error"}
-              aria-label={syncState === "error" ? "저장 다시 시도" : syncState === "saving" ? "계정에 저장 중" : "계정에 저장됨"}
-              title={syncState === "error" ? "저장 실패 · 눌러서 다시 시도" : syncState === "saving" ? "저장 중" : "저장됨"}
+              aria-label="저장 다시 시도"
+              title="저장 실패 · 눌러서 다시 시도"
             >
-              {syncState === "saving" ? <LoaderCircle aria-hidden="true" /> : syncState === "error" ? <CloudOff aria-hidden="true" /> : <Check aria-hidden="true" />}
+              <CloudOff aria-hidden="true" />
             </button>}
             <button className="quick-theme-toggle" onClick={() => setIsDark((value) => !value)} aria-label={isDark ? "라이트 모드로 변경" : "다크 모드로 변경"} title={isDark ? "라이트 모드" : "다크 모드"}>
               {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </button>
-            <button className={`auth-trigger ${authUser ? "settings-trigger" : ""}`} onClick={() => authUser ? setScreen("settings") : setIsAuthOpen(true)} disabled={!authReady} aria-label={authUser ? "설정 열기" : "로그인 및 회원가입"}>
-              {authUser ? <><Settings aria-hidden="true" /><span>설정</span></> : "로그인"}
+            <button className="auth-trigger settings-trigger" onClick={() => setScreen("settings")} aria-label="설정 열기">
+              <Settings aria-hidden="true" /><span>설정</span>
             </button>
+            {!authUser && <button className="auth-trigger login-trigger" onClick={() => setIsAuthOpen(true)} disabled={!authReady} aria-label="로그인 및 회원가입">로그인</button>}
           </div>
         </header>
 

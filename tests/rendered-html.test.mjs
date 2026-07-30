@@ -67,7 +67,8 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /safeStoredJson/);
   assert.match(page, /minutesBySubject\(studyLogs, subjects, dateKey\(\)\)/);
   assert.match(page, /same time|같은 시간대에 이미 기록이 있어요/);
-  assert.match(page, /className={`sync-indicator/);
+  assert.match(page, /syncState === "error" && <button/);
+  assert.doesNotMatch(page, /<Check aria-hidden="true"/);
   assert.match(page, /className="todo-delete"/);
   assert.match(page, /setSavedSession\(recorded && previousSubject/);
   assert.match(page, /<button className="subject-play" onClick=\{\(\) => onChooseSubject\(subject\.id\)\}/);
@@ -155,7 +156,6 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.doesNotMatch(css, /\.dark\.app-shell \{ background: radial-gradient/);
   assert.match(page, /\{ id: "stats" as Screen, icon: BarChart3, label: "통계" \},\s*\{ id: "timer"/);
   assert.match(page, /\{ id: "planner" as Screen, icon: CalendarDays, label: "플래너" \}/);
-  assert.match(page, /className=\{`auth-trigger/);
   assert.match(page, /function AuthDialog/);
   assert.match(page, /className={`screen-stage screen-stage-\$\{screen\}`}/);
   assert.match(page, /Google 계정으로 계속하기/);
@@ -170,7 +170,8 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /\/api\/account\/recovery-code/);
   assert.match(page, /aria-label="계정 정보 열기"/);
   assert.match(page, /className="quick-theme-toggle"/);
-  assert.match(page, /aria-label=\{authUser \? "설정 열기"/);
+  assert.match(page, /className="auth-trigger settings-trigger"/);
+  assert.match(page, /!authUser && <button className="auth-trigger login-trigger"/);
   assert.match(page, /id: "group" as Screen/);
   assert.match(page, /type="date" value=\{birthDate\}/);
   assert.match(page, /다크 모드로 변경/);
