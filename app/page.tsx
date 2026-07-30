@@ -27,11 +27,19 @@ type StudyLog = {
   subjectId: string;
   startMinutes: number;
   durationMinutes: number;
+  trackedSeconds?: number;
   trackedMinutes?: number;
   recordedAt?: string;
 };
 
-type PlannerTheme = "milk" | "lavender" | "sage";
+type CalendarSchedule = {
+  id: string;
+  title: string;
+  date: string;
+  time?: string;
+};
+
+type PlannerTheme = "milk" | "fog" | "rose";
 
 const initialSubjects: Subject[] = [
   { id: "focus", name: "공부", short: "공", color: "#8d9bc4", soft: "#e5eaf5", minutes: 0 },
@@ -137,16 +145,21 @@ function recordedAtForDate(value: string, startMinutes: number) {
 }
 
 function formatDuration(totalSeconds: number) {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const safeSeconds = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function formatMinutes(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return hours ? `${hours}시간 ${String(rest).padStart(2, "0")}분` : `${rest}분`;
+  const totalSeconds = Math.max(0, Math.round(minutes * 60));
+  const hours = Math.floor(totalSeconds / 3600);
+  const restMinutes = Math.floor((totalSeconds % 3600) / 60);
+  const restSeconds = totalSeconds % 60;
+  if (hours) return `${hours}시간 ${String(restMinutes).padStart(2, "0")}분`;
+  if (restMinutes) return `${restMinutes}분${restSeconds ? ` ${restSeconds}초` : ""}`;
+  return `${restSeconds}초`;
 }
 
 function clockFromMinutes(minutes: number) {
@@ -160,7 +173,20 @@ function minutesFromClock(value: string) {
 }
 
 function loggedMinutes(log: StudyLog) {
-  return log.trackedMinutes ?? log.durationMinutes;
+  return log.trackedSeconds !== undefined ? log.trackedSeconds / 60 : log.trackedMinutes ?? log.durationMinutes;
+}
+
+function parseCalendarFile(source: string) {
+  const unfolded = source.replace(/\r?\n[ \t]/g, "");
+  return [...unfolded.matchAll(/BEGIN:VEVENT([\s\S]*?)END:VEVENT/g)].flatMap((match, index) => {
+    const block = match[1];
+    const summary = block.match(/(?:^|\r?\n)SUMMARY(?:;[^:]*)?:(.*)/)?.[1]?.trim().replace(/\\,/g, ",").replace(/\\n/g, " ");
+    const start = block.match(/(?:^|\r?\n)DTSTART(?:;[^:]*)?:(\d{8})(?:T(\d{2})(\d{2}))?/) ?? [];
+    if (!summary || !start[1]) return [];
+    const date = `${start[1].slice(0, 4)}-${start[1].slice(4, 6)}-${start[1].slice(6, 8)}`;
+    const time = start[2] ? `${start[2]}:${start[3]}` : undefined;
+    return [{ id: `calendar-${date}-${index}-${summary}`, title: summary, date, time }];
+  });
 }
 
 function Icon({ children }: { children: string }) {
@@ -187,6 +213,7 @@ export default function Home() {
   const [profileName, setProfileName] = useState("");
   const [profileColor, setProfileColor] = useState("#e5a089");
   const [plannerDate, setPlannerDate] = useState(() => dateKey());
+  const [calendarSchedules, setCalendarSchedules] = useState<CalendarSchedule[]>([]);
 
   useEffect(() => {
     const isDemo = window.location.hostname.split(".")[0] === "timeit-demo";
@@ -199,6 +226,7 @@ export default function Home() {
     const savedPlannerTheme = window.localStorage.getItem("timeit-planner-theme");
     const savedProfileName = window.localStorage.getItem("timeit-profile-name");
     const savedProfileColor = window.localStorage.getItem("timeit-profile-color");
+    const savedCalendarSchedules = window.localStorage.getItem("timeit-calendar-schedules");
     const storageVersion = window.localStorage.getItem("timeit-storage-version");
     if (storageVersion !== expectedStorageVersion) {
       ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-joined-groups", "timeit-profile-name"].forEach((key) => window.localStorage.removeItem(key));
@@ -229,9 +257,10 @@ export default function Home() {
       }
     }
     setIsDark(savedTheme !== "light");
-    if (savedPlannerTheme === "milk" || savedPlannerTheme === "lavender" || savedPlannerTheme === "sage") setPlannerTheme(savedPlannerTheme);
+    if (savedPlannerTheme === "milk" || savedPlannerTheme === "fog" || savedPlannerTheme === "rose") setPlannerTheme(savedPlannerTheme);
     if (storageVersion === expectedStorageVersion && savedProfileName) setProfileName(savedProfileName);
     if (storageVersion === expectedStorageVersion && savedProfileColor) setProfileColor(savedProfileColor);
+    if (storageVersion === expectedStorageVersion && savedCalendarSchedules) setCalendarSchedules(JSON.parse(savedCalendarSchedules));
   }, []);
 
   useEffect(() => {
@@ -262,6 +291,10 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("timeit-profile-color", profileColor);
   }, [profileColor]);
+
+  useEffect(() => {
+    window.localStorage.setItem("timeit-calendar-schedules", JSON.stringify(calendarSchedules));
+  }, [calendarSchedules]);
 
 
   useEffect(() => {
@@ -302,7 +335,7 @@ export default function Home() {
   const activeSubject = subjects.find((subject) => subject.id === selectedSubject) ?? subjects[0];
   const totalToday = subjects.reduce((sum, subject) => sum + subject.minutes, 0) + Math.floor(seconds / 60);
   const liveSession = isRunning && sessionStartMinutes !== null && seconds > 0
-    ? { id: "live-session", subjectId: selectedSubject, startMinutes: sessionStartMinutes, durationMinutes: Math.max(10, Math.ceil((seconds / 60) / 10) * 10), trackedMinutes: Math.floor(seconds / 60), recordedAt: new Date().toISOString() }
+    ? { id: "live-session", subjectId: selectedSubject, startMinutes: sessionStartMinutes, durationMinutes: Math.max(10, Math.ceil(seconds / 600) * 10), trackedSeconds: seconds, recordedAt: new Date().toISOString() }
     : null;
   const toggleTodo = (id: number) => {
     setTodos((items) => items.map((todo) => todo.id === id ? { ...todo, done: !todo.done } : todo));
@@ -367,7 +400,7 @@ export default function Home() {
   const updateStudyLog = (id: string, next: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => {
     const previous = studyLogs.find((log) => log.id === id);
     if (!previous) return;
-    const updated: StudyLog = { ...previous, ...next, trackedMinutes: next.durationMinutes };
+    const updated: StudyLog = { ...previous, ...next, trackedSeconds: undefined, trackedMinutes: next.durationMinutes };
     const previousMinutes = loggedMinutes(previous);
     const nextMinutes = loggedMinutes(updated);
     setStudyLogs((items) => items.map((log) => log.id === id ? updated : log));
@@ -388,12 +421,12 @@ export default function Home() {
   };
 
   const commitSession = (subjectId: string, elapsedSeconds: number, startedAt: number | null) => {
-    if (!elapsedSeconds) return 0;
-    const recorded = Math.max(1, Math.floor(elapsedSeconds / 60));
-    const gridDuration = Math.max(10, Math.ceil(recorded / 10) * 10);
+    if (elapsedSeconds <= 0) return 0;
+    const recorded = elapsedSeconds / 60;
+    const gridDuration = Math.max(10, Math.ceil(elapsedSeconds / 600) * 10);
     const now = new Date();
     const startMinutes = startedAt ?? now.getHours() * 60 + now.getMinutes();
-    addStudyLog({ id: `session-${Date.now()}`, subjectId, startMinutes, durationMinutes: gridDuration, trackedMinutes: recorded });
+    addStudyLog({ id: `session-${Date.now()}`, subjectId, startMinutes, durationMinutes: gridDuration, trackedSeconds: elapsedSeconds });
     return recorded;
   };
 
@@ -491,7 +524,7 @@ export default function Home() {
           {screen === "timer" && (
             <TimerScreen activeSubject={activeSubject} subjects={subjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { setPomodoroPhase((phase) => phase === "집중" ? "휴식" : "집중"); setPomodoroRemaining(pomodoroPhase === "집중" ? 5 * 60 : 25 * 60); }} onReset={resetTimer} savedSession={savedSession} />
           )}
-          {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} />}
+          {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} calendarSchedules={calendarSchedules} setCalendarSchedules={setCalendarSchedules} />}
           {screen === "settings" && <SettingsPanel subjects={subjects} onAddSubject={addSubject} onDeleteSubject={deleteSubject} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} profileName={profileName} setProfileName={setProfileName} profileColor={profileColor} setProfileColor={setProfileColor} />}
         </div>
 
@@ -640,8 +673,10 @@ function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, sec
   </section>;
 }
 
-function StatsScreen({ subjects, studyLogs }: { subjects: Subject[]; studyLogs: StudyLog[] }) {
+function StatsScreen({ subjects, studyLogs, calendarSchedules, setCalendarSchedules }: { subjects: Subject[]; studyLogs: StudyLog[]; calendarSchedules: CalendarSchedule[]; setCalendarSchedules: (items: CalendarSchedule[]) => void }) {
   const [range, setRange] = useState<"week" | "month">("week");
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => dateKey());
   const now = new Date();
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
@@ -653,13 +688,50 @@ function StatsScreen({ subjects, studyLogs }: { subjects: Subject[]; studyLogs: 
   const donutStyle = periodTotal ? `conic-gradient(${bySubject.reduce<{ items: string[]; point: number }>((state, item) => { const next = state.point + item.minutes / periodTotal * 100; state.items.push(`${item.subject.color} ${state.point}% ${next}%`); state.point = next; return state; }, { items: [], point: 0 }).items.join(", ")})` : "conic-gradient(#e6e7eb 0 100%)";
   const days = range === "week" ? Array.from({ length: 7 }, (_, index) => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - 6 + index); return date; }) : Array.from({ length: 4 }, (_, index) => { const date = new Date(now.getFullYear(), now.getMonth(), 1 + index * 7); return date; });
   const values = days.map((date, index) => periodLogs.filter((log) => { const logged = new Date(log.recordedAt!); return range === "week" ? logged.toDateString() === date.toDateString() : Math.floor((logged.getDate() - 1) / 7) === index; }).reduce((sum, log) => sum + loggedMinutes(log), 0));
-  const monthDays = Array.from({ length: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() }, (_, index) => index + 1);
-  const monthHours = monthDays.map((day) => periodLogs.filter((log) => { const logged = new Date(log.recordedAt!); return logged.getDate() === day; }).reduce((sum, log) => sum + loggedMinutes(log), 0) / 60);
-  const studiedDays = monthHours.filter((hours) => hours > 0).length;
   const rangeLabel = range === "week" ? "이번 주" : "이번 달";
   const maxValue = Math.max(...values, 1);
+  const calendarYear = calendarMonth.getFullYear();
+  const calendarMonthIndex = calendarMonth.getMonth();
+  const calendarDayCount = new Date(calendarYear, calendarMonthIndex + 1, 0).getDate();
+  const calendarLeading = new Date(calendarYear, calendarMonthIndex, 1).getDay();
+  const calendarDays = Array.from({ length: calendarDayCount }, (_, index) => {
+    const day = index + 1;
+    const key = dateKey(new Date(calendarYear, calendarMonthIndex, day));
+    const minutes = studyLogs.filter((log) => logDateKey(log) === key).reduce((sum, log) => sum + loggedMinutes(log), 0);
+    const schedules = calendarSchedules.filter((schedule) => schedule.date === key);
+    return { day, key, hours: minutes / 60, schedules };
+  });
+  const selectedSchedules = calendarSchedules.filter((schedule) => schedule.date === selectedCalendarDate);
+  const selectedStudyMinutes = studyLogs.filter((log) => logDateKey(log) === selectedCalendarDate).reduce((sum, log) => sum + loggedMinutes(log), 0);
+  const moveCalendarMonth = (amount: number) => {
+    const next = new Date(calendarYear, calendarMonthIndex + amount, 1);
+    setCalendarMonth(next);
+    setSelectedCalendarDate(dateKey(next));
+  };
+  const importCalendar = async (file?: File) => {
+    if (!file) return;
+    const imported = parseCalendarFile(await file.text());
+    const merged = [...calendarSchedules];
+    imported.forEach((schedule) => {
+      if (!merged.some((item) => item.id === schedule.id)) merged.push(schedule);
+    });
+    setCalendarSchedules(merged);
+  };
 
-  return <section className="stats-page"><div className="screen-intro"><span className="section-kicker">STUDY INSIGHTS</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div><article className="stats-highlight"><span>{rangeLabel} 총 집중</span><strong>{formatMinutes(periodTotal)}</strong><p>{periodTotal ? <>기록한 시간만 <b>있는 그대로</b> 보여드려요.</> : <>아직 기록이 없어요. <b>타이머를 시작</b>해보세요.</>}</p></article><article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><div className="stats-period" role="tablist"><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>이번 주</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>이번 달</button></div></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(periodTotal)}</b><small>{rangeLabel} 집중</small></div></div><div className="donut-legend">{bySubject.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{periodTotal ? Math.round(minutes / periodTotal * 100) : 0}%</b></span>)}</div></div></article><article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">{range === "week" ? "WEEKLY FLOW" : "MONTHLY FLOW"}</span><h2>{rangeLabel} 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(periodTotal)}</b></div><div className={`stats-bars ${range === "month" ? "month-bars" : ""}`}>{values.map((value, index) => <div key={index}><i style={{ height: `${Math.max(value / maxValue * 100, value ? 3 : 0)}%` }} /><span>{range === "week" ? weekdays[days[index].getDay()] : `${index + 1}주`}</span></div>)}</div></article><article className="analytics-card grass-card"><div className="planner-card-header"><div><span className="section-kicker">STUDY GARDEN</span><h2>공부 잔디</h2></div><span className="garden-total">이번 달 {studiedDays}일</span></div><div className="grass-grid grass-hours">{monthHours.map((hours, index) => <span className={`grass-${grassLevel(hours)}`} key={index} title={`${index + 1}일 · ${displayHours(hours)}`}><b>{displayHours(hours)}</b></span>)}</div><div className="grass-legend"><span>적게</span><i className="grass-0" /><i className="grass-1" /><i className="grass-2" /><i className="grass-4" /><span>많이</span></div></article></section>;
+  return <section className="stats-page">
+    <div className="screen-intro"><span className="section-kicker">STUDY INSIGHTS</span><h1>쌓인 시간을<br /><em>눈으로 확인해요.</em></h1></div>
+    <article className="stats-highlight"><span>{rangeLabel} 총 집중</span><strong>{formatMinutes(periodTotal)}</strong><p>{periodTotal ? <>기록한 시간만 <b>있는 그대로</b> 보여드려요.</> : <>아직 기록이 없어요. <b>타이머를 시작</b>해보세요.</>}</p></article>
+    <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">SUBJECT BALANCE</span><h2>과목별 집중 비율</h2></div><div className="stats-period" role="tablist"><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>이번 주</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>이번 달</button></div></div><div className="donut-layout"><div className="donut" style={{ background: donutStyle }}><div><b>{formatMinutes(periodTotal)}</b><small>{rangeLabel} 집중</small></div></div><div className="donut-legend">{bySubject.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}<b>{periodTotal ? Math.round(minutes / periodTotal * 100) : 0}%</b></span>)}</div></div></article>
+    <article className="analytics-card"><div className="planner-card-header"><div><span className="section-kicker">{range === "week" ? "WEEKLY FLOW" : "MONTHLY FLOW"}</span><h2>{rangeLabel} 학습 리듬</h2></div><b className="soft-strong">{formatMinutes(periodTotal)}</b></div><div className={`stats-bars ${range === "month" ? "month-bars" : ""}`}>{values.map((value, index) => <div key={index}><i style={{ height: `${Math.max(value / maxValue * 100, value ? 3 : 0)}%` }} /><span>{range === "week" ? weekdays[days[index].getDay()] : `${index + 1}주`}</span></div>)}</div></article>
+    <article className="analytics-card study-calendar-card">
+      <div className="calendar-title-row"><div><span className="section-kicker">STUDY CALENDAR</span><h2>캘린더</h2></div><label className="calendar-import">일정 가져오기<input type="file" accept=".ics,text/calendar" onChange={(event) => void importCalendar(event.target.files?.[0])} /></label></div>
+      <div className="calendar-month-nav"><button onClick={() => moveCalendarMonth(-1)} aria-label="이전 달">‹</button><strong>{calendarYear}년 {calendarMonthIndex + 1}월</strong><button onClick={() => moveCalendarMonth(1)} aria-label="다음 달">›</button></div>
+      <div className="study-calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="study-calendar-grid">{Array.from({ length: calendarLeading }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}{calendarDays.map((item) => <button className={`calendar-day grass-${grassLevel(item.hours)} ${selectedCalendarDate === item.key ? "selected" : ""} ${item.key === dateKey() ? "today" : ""}`} onClick={() => setSelectedCalendarDate(item.key)} key={item.key}><b>{item.day}</b><small>{item.hours ? displayHours(item.hours) : ""}</small>{item.schedules.length > 0 && <i>{item.schedules.length}</i>}</button>)}</div>
+      <div className="calendar-day-detail"><div><span>{selectedCalendarDate.replaceAll("-", ".")}</span><b>{formatMinutes(selectedStudyMinutes)} 집중</b></div>{selectedSchedules.length ? <ul>{selectedSchedules.map((schedule) => <li key={schedule.id}><time>{schedule.time ?? "종일"}</time><span>{schedule.title}</span></li>)}</ul> : <p>가져온 일정이 없어요.</p>}</div>
+      <p className="calendar-sync-note">휴대폰 캘린더에서 내보낸 ICS 파일을 가져오면 일정과 공부량을 한 달력에서 볼 수 있어요.</p>
+    </article>
+  </section>;
 }
 
 function SettingsPanel({ subjects, onAddSubject, onDeleteSubject, isDark, setIsDark, plannerTheme, setPlannerTheme, profileName, setProfileName, profileColor, setProfileColor }: { subjects: Subject[]; onAddSubject: (name: string) => void; onDeleteSubject: (id: string) => void; isDark: boolean; setIsDark: (value: boolean) => void; plannerTheme: PlannerTheme; setPlannerTheme: (value: PlannerTheme) => void; profileName: string; setProfileName: (value: string) => void; profileColor: string; setProfileColor: (value: string) => void }) {
@@ -669,8 +741,8 @@ function SettingsPanel({ subjects, onAddSubject, onDeleteSubject, isDark, setIsD
   const [subjectName, setSubjectName] = useState("");
   const themes: { id: PlannerTheme; label: string; description: string }[] = [
     { id: "milk", label: "웜 베이지", description: "가장 편안한 크림빛 배경" },
-    { id: "lavender", label: "소프트 라일락", description: "은은하고 맑은 보랏빛 배경" },
-    { id: "sage", label: "라이트 세이지", description: "오래 봐도 편한 연초록 배경" },
+    { id: "fog", label: "포그 블루", description: "집중을 방해하지 않는 회청색 배경" },
+    { id: "rose", label: "더스티 로즈", description: "채도를 낮춘 차분한 로즈 배경" },
   ];
   const selectedTheme = themes.find((theme) => theme.id === plannerTheme)!;
 
