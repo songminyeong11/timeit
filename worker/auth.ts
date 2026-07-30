@@ -11,6 +11,9 @@ type AuthUser = {
 const SESSION_COOKIE = "timeit_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 const PASSWORD_ITERATIONS = 100_000;
+const AUTH_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_ATTEMPT_LIMIT = 8;
+const AUTH_LOCK_MS = 15 * 60 * 1000;
 const encoder = new TextEncoder();
 
 function json(body: unknown, status = 200, headers: HeadersInit = {}) {
@@ -21,6 +24,32 @@ function json(body: unknown, status = 200, headers: HeadersInit = {}) {
       ...headers,
     },
   });
+}
+
+async function readJsonBody<T>(request: Request, maxBytes = 16_384): Promise<T | null> {
+  const declaredLength = Number(request.headers.get("Content-Length") ?? 0);
+  if (declaredLength > maxBytes) return null;
+  if (!request.body) return null;
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let body = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    body += decoder.decode(value, { stream: true });
+  }
+  body += decoder.decode();
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    return null;
+  }
 }
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -70,8 +99,10 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, email TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, created_at INTEGER NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS user_data (user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS auth_attempts (attempt_key TEXT PRIMARY KEY NOT NULL, failures INTEGER NOT NULL, window_started_at INTEGER NOT NULL, locked_until INTEGER NOT NULL DEFAULT 0)"),
     db.prepare("CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id)"),
     db.prepare("CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS auth_attempts_locked_until_idx ON auth_attempts(locked_until)"),
   ]);
   const userColumns = await db.prepare("PRAGMA table_info(users)").all<{ name: string }>();
   const columnNames = new Set((userColumns.results ?? []).map((column) => column.name));
@@ -93,9 +124,14 @@ async function currentUser(request: Request, db: D1Database): Promise<AuthUser |
 
 async function createSession(db: D1Database, user: AuthUser) {
   const token = randomToken();
-  await db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
-    .bind(await sha256(token), user.id, Date.now() + SESSION_SECONDS * 1000, Date.now())
-    .run();
+  const now = Date.now();
+  await db.batch([
+    db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
+      .bind(await sha256(token), user.id, now + SESSION_SECONDS * 1000, now),
+    db.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(now),
+    db.prepare("DELETE FROM auth_attempts WHERE locked_until < ? AND window_started_at < ?")
+      .bind(now, now - AUTH_ATTEMPT_WINDOW_MS * 2),
+  ]);
   return json({ user }, 200, { "Set-Cookie": sessionCookie(token) });
 }
 
@@ -111,6 +147,40 @@ function recoveryCode() {
     .join("")
     .match(/.{1,4}/g)!
     .join("-");
+}
+
+async function authAttemptKey(kind: "login" | "recovery", email: string, request: Request) {
+  const clientAddress = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  return sha256(`${kind}:${email}:${clientAddress}`);
+}
+
+async function authLockRemaining(db: D1Database, attemptKey: string) {
+  const row = await db.prepare("SELECT locked_until AS lockedUntil FROM auth_attempts WHERE attempt_key = ?")
+    .bind(attemptKey)
+    .first<{ lockedUntil: number }>();
+  return Math.max(0, (row?.lockedUntil ?? 0) - Date.now());
+}
+
+async function recordAuthFailure(db: D1Database, attemptKey: string) {
+  const now = Date.now();
+  await db.prepare(
+    `INSERT INTO auth_attempts (attempt_key, failures, window_started_at, locked_until)
+     VALUES (?, 1, ?, 0)
+     ON CONFLICT(attempt_key) DO UPDATE SET
+       locked_until = CASE WHEN ? - window_started_at < ? AND failures + 1 >= ? THEN ? ELSE 0 END,
+       failures = CASE WHEN ? - window_started_at < ? THEN failures + 1 ELSE 1 END,
+       window_started_at = CASE WHEN ? - window_started_at < ? THEN window_started_at ELSE ? END`,
+  ).bind(
+    attemptKey,
+    now,
+    now, AUTH_ATTEMPT_WINDOW_MS, AUTH_ATTEMPT_LIMIT, now + AUTH_LOCK_MS,
+    now, AUTH_ATTEMPT_WINDOW_MS,
+    now, AUTH_ATTEMPT_WINDOW_MS, now,
+  ).run();
+}
+
+async function clearAuthFailures(db: D1Database, attemptKey: string) {
+  await db.prepare("DELETE FROM auth_attempts WHERE attempt_key = ?").bind(attemptKey).run();
 }
 
 async function verifiedPasswordUser(db: D1Database, userId: string, password: string) {
@@ -135,7 +205,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
   }
 
   if (url.pathname === "/api/auth/signup" && request.method === "POST") {
-    const body = await request.json().catch(() => null) as { name?: unknown; email?: unknown; password?: unknown } | null;
+    const body = await readJsonBody<{ name?: unknown; email?: unknown; password?: unknown }>(request);
     const name = typeof body?.name === "string" ? body.name.trim() : "";
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body?.password === "string" ? body.password : "";
@@ -157,16 +227,23 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
   }
 
   if (url.pathname === "/api/auth/login" && request.method === "POST") {
-    const body = await request.json().catch(() => null) as { email?: unknown; password?: unknown } | null;
+    const body = await readJsonBody<{ email?: unknown; password?: unknown }>(request);
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body?.password === "string" ? body.password : "";
+    const attemptKey = await authAttemptKey("login", email, request);
+    const lockRemaining = await authLockRemaining(db, attemptKey);
+    if (lockRemaining > 0) {
+      return json({ error: "로그인 시도가 너무 많아요. 15분 뒤 다시 시도해 주세요." }, 429, { "Retry-After": String(Math.ceil(lockRemaining / 1000)) });
+    }
     const row = await db.prepare("SELECT id, email, display_name AS name, password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE email = ?")
       .bind(email)
       .first<AuthUser & { passwordHash: string; passwordSalt: string }>();
     const candidateHash = await passwordHash(password, row?.passwordSalt ?? "timeit-invalid-account-salt");
     if (!row || !safeEqual(candidateHash, row.passwordHash)) {
+      await recordAuthFailure(db, attemptKey);
       return json({ error: "이메일 또는 비밀번호를 확인해 주세요." }, 401);
     }
+    await clearAuthFailures(db, attemptKey);
     return createSession(db, { id: row.id, email: row.email, name: row.name });
   }
 
@@ -177,17 +254,23 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
   }
 
   if (url.pathname === "/api/auth/reset-password" && request.method === "POST") {
-    const body = await request.json().catch(() => null) as { email?: unknown; recoveryCode?: unknown; password?: unknown } | null;
+    const body = await readJsonBody<{ email?: unknown; recoveryCode?: unknown; password?: unknown }>(request);
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     const code = typeof body?.recoveryCode === "string" ? body.recoveryCode.trim().toUpperCase() : "";
     const password = typeof body?.password === "string" ? body.password : "";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "가입한 이메일을 확인해 주세요." }, 400);
     if (password.length < 8 || password.length > 128) return json({ error: "새 비밀번호는 8자 이상 입력해 주세요." }, 400);
+    const attemptKey = await authAttemptKey("recovery", email, request);
+    const lockRemaining = await authLockRemaining(db, attemptKey);
+    if (lockRemaining > 0) {
+      return json({ error: "복구 시도가 너무 많아요. 15분 뒤 다시 시도해 주세요." }, 429, { "Retry-After": String(Math.ceil(lockRemaining / 1000)) });
+    }
     const row = await db.prepare(
       "SELECT id, recovery_hash AS recoveryHash, recovery_salt AS recoverySalt FROM users WHERE email = ?",
     ).bind(email).first<{ id: string; recoveryHash: string | null; recoverySalt: string | null }>();
     const candidateHash = await passwordHash(code, row?.recoverySalt ?? "timeit-invalid-recovery-salt");
     if (!row?.recoveryHash || !safeEqual(candidateHash, row.recoveryHash)) {
+      await recordAuthFailure(db, attemptKey);
       return json({ error: "이메일 또는 복구 코드를 확인해 주세요." }, 401);
     }
     const salt = randomToken(16);
@@ -197,6 +280,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
       db.prepare("UPDATE users SET password_hash = ?, password_salt = ?, recovery_hash = ?, recovery_salt = ? WHERE id = ?")
         .bind(await passwordHash(password, salt), salt, await passwordHash(nextRecoveryCode, recoverySalt), recoverySalt, row.id),
       db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(row.id),
+      db.prepare("DELETE FROM auth_attempts WHERE attempt_key = ?").bind(attemptKey),
     ]);
     return json({ ok: true, recoveryCode: nextRecoveryCode }, 200, { "Set-Cookie": sessionCookie("", 0) });
   }
@@ -204,7 +288,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
   if (url.pathname === "/api/account/profile" && request.method === "PATCH") {
     const user = await currentUser(request, db);
     if (!user) return json({ error: "로그인이 필요해요." }, 401);
-    const body = await request.json().catch(() => null) as { name?: unknown } | null;
+    const body = await readJsonBody<{ name?: unknown }>(request);
     const name = typeof body?.name === "string" ? body.name.trim() : "";
     if (name.length < 2 || name.length > 24) return json({ error: "이름은 2~24자로 입력해 주세요." }, 400);
     await db.prepare("UPDATE users SET display_name = ? WHERE id = ?").bind(name, user.id).run();
@@ -214,7 +298,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
   if (url.pathname === "/api/account/password" && request.method === "POST") {
     const user = await currentUser(request, db);
     if (!user) return json({ error: "로그인이 필요해요." }, 401);
-    const body = await request.json().catch(() => null) as { currentPassword?: unknown; newPassword?: unknown } | null;
+    const body = await readJsonBody<{ currentPassword?: unknown; newPassword?: unknown }>(request);
     const currentPassword = typeof body?.currentPassword === "string" ? body.currentPassword : "";
     const newPassword = typeof body?.newPassword === "string" ? body.newPassword : "";
     if (newPassword.length < 8 || newPassword.length > 128) return json({ error: "새 비밀번호는 8자 이상 입력해 주세요." }, 400);
@@ -229,7 +313,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
   if (url.pathname === "/api/account/recovery-code" && request.method === "POST") {
     const user = await currentUser(request, db);
     if (!user) return json({ error: "로그인이 필요해요." }, 401);
-    const body = await request.json().catch(() => null) as { currentPassword?: unknown } | null;
+    const body = await readJsonBody<{ currentPassword?: unknown }>(request);
     const currentPassword = typeof body?.currentPassword === "string" ? body.currentPassword : "";
     if (!await verifiedPasswordUser(db, user.id, currentPassword)) return json({ error: "현재 비밀번호가 올바르지 않아요." }, 401);
     const nextRecoveryCode = recoveryCode();

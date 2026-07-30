@@ -6,6 +6,8 @@ export const users = sqliteTable("users", {
   displayName: text("display_name").notNull(),
   passwordHash: text("password_hash").notNull(),
   passwordSalt: text("password_salt").notNull(),
+  recoveryHash: text("recovery_hash"),
+  recoverySalt: text("recovery_salt"),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -24,3 +26,12 @@ export const userData = sqliteTable("user_data", {
   payload: text("payload").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const authAttempts = sqliteTable("auth_attempts", {
+  attemptKey: text("attempt_key").primaryKey(),
+  failures: integer("failures").notNull(),
+  windowStartedAt: integer("window_started_at").notNull(),
+  lockedUntil: integer("locked_until").notNull().default(0),
+}, (table) => [
+  index("auth_attempts_locked_until_idx").on(table.lockedUntil),
+]);

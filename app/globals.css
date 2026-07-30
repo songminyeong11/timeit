@@ -685,3 +685,106 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .account-identity { grid-template-columns: 50px minmax(0, 1fr) auto; padding: 13px; }
   .account-identity .account-avatar { width: 50px; height: 50px; }
 }
+
+/* Production hardening: readable controls, visible save state, and calm empty/error states. */
+:where(button, input, select):focus-visible {
+  outline: 2px solid color-mix(in srgb, #ca806c 74%, white);
+  outline-offset: 2px;
+}
+.sync-indicator {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid #e5dfda;
+  border-radius: 13px;
+  background: rgba(255,255,255,.72);
+  color: #718578;
+}
+.sync-indicator svg { width: 13px; height: 13px; }
+.sync-indicator.saving svg { animation: sync-spin .9s linear infinite; }
+.sync-indicator.error { color: #b6655b; cursor: pointer; }
+.sync-indicator:disabled { cursor: default; opacity: 1; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+.dark .sync-indicator { border-color: #41494a; background: #303738; color: #9fc0ab; }
+.dark .sync-indicator.error { color: #f0a294; }
+
+.todo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 4px;
+  padding: 0;
+}
+.todo-row:hover { padding-left: 0; }
+.todo-toggle {
+  min-width: 0;
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 0;
+  background: transparent;
+  text-align: left;
+}
+.todo-delete {
+  width: 34px;
+  height: 34px;
+  align-self: center;
+  border-radius: 11px;
+  background: transparent;
+  color: #b3aaa7;
+  font-size: 18px;
+  opacity: 0;
+  transition: opacity .25s ease, background .25s ease, color .25s ease;
+}
+.todo-row:hover .todo-delete, .todo-delete:focus-visible { opacity: 1; }
+.todo-delete:hover { background: #f5e9e5; color: #a85f56; }
+.todo-empty {
+  display: grid;
+  gap: 5px;
+  padding: 24px 6px 18px;
+  color: #7f7776;
+  text-align: center;
+}
+.todo-empty b { font-size: 13px; }
+.todo-empty span { color: #aaa19f; font-size: 11px; }
+.dark .todo-delete { color: #a9a19e; }
+.dark .todo-delete:hover { background: #493937; color: #ffb3a5; }
+.dark .todo-empty { color: #d8d0ca; }
+.dark .todo-empty span { color: #aaa5a1; }
+
+.timeline-editor-error {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: #f7e8e4;
+  color: #a75d53;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.dark .timeline-editor-error { background: #503b39; color: #ffc0b2; }
+
+/* The original compact scale was too small on desktop and high-density phones. */
+.auth-trigger, .nav-item, .subject-play, .settings-subject small,
+.timeline-header-side .timeline-edit-toggle, .stats-period button { font-size: 10px; }
+.home-study-total span, .home-study-total button, .timer-status-bar,
+.focus-time > span, .pomodoro-rule, .calendar-day-detail > div { font-size: 11px; }
+.focus-subject small, .focus-time small, .subject-timer-name small,
+.subject-list-heading > span, .timeline-today-time { font-size: 10px; }
+.subject-timer-name b, .settings-subject b { font-size: 13px; }
+.calendar-sync-note, .calendar-day-detail p { font-size: 9.5px; }
+
+@media (hover: none) {
+  .todo-delete { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

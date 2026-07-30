@@ -5,5 +5,13 @@
   "display": "standalone",
   "background_color": "#fbfaf8",
   "theme_color": "#f4dfd1",
-  "description": "플래너, 집중 타이머, 공부 통계를 한 곳에 담은 모바일 스터디 앱"
+  "description": "플래너, 집중 타이머, 공부 통계를 한 곳에 담은 모바일 스터디 앱",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }

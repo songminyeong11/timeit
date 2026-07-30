@@ -59,7 +59,14 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /const recorded = elapsedSeconds \/ 60/);
   assert.match(page, /trackedSeconds: elapsedSeconds/);
   assert.doesNotMatch(page, /Math\.max\(1, Math\.floor\(elapsedSeconds \/ 60\)\)/);
-  assert.match(page, /const recorded = isRunning \? commitSession\(selectedSubject, seconds, sessionStartMinutes\) : 0;/);
+  assert.match(page, /const recorded = isRunning \? commitSession\(selectedSubject, seconds, sessionStartedAt\) : 0;/);
+  assert.match(page, /const ACTIVE_TIMER_KEY = "timeit-active-timer-v1"/);
+  assert.match(page, /lastTickAtRef/);
+  assert.match(page, /safeStoredJson/);
+  assert.match(page, /minutesBySubject\(studyLogs, subjects, dateKey\(\)\)/);
+  assert.match(page, /same time|같은 시간대에 이미 기록이 있어요/);
+  assert.match(page, /className={`sync-indicator/);
+  assert.match(page, /className="todo-delete"/);
   assert.match(page, /setSavedSession\(recorded && previousSubject/);
   assert.match(page, /<button className="subject-play" onClick=\{\(\) => onChooseSubject\(subject\.id\)\}/);
   assert.match(page, /onDeleteSubject=\{deleteSubject\}/);
@@ -161,6 +168,9 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(workerAuth, /\/api\/auth\/reset-password/);
   assert.match(workerAuth, /\/api\/account\/profile/);
   assert.match(workerAuth, /recovery_hash/);
+  assert.match(workerAuth, /AUTH_ATTEMPT_LIMIT/);
+  assert.match(workerAuth, /auth_attempts/);
+  assert.match(workerIndex, /X-Content-Type-Options/);
   assert.doesNotMatch(workerAuth, /localStorage/);
   assert.match(page, /"중지"/);
 });

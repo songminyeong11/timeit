@@ -3,9 +3,8 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { handleAuthRequest } from "./auth";
 
-interface Env {
+interface WorkerEnv extends Env {
   ASSETS: Fetcher;
-  DB: D1Database;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -20,6 +19,15 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+function withSecurityHeaders(response: Response) {
+  const secured = new Response(response.body, response);
+  secured.headers.set("X-Content-Type-Options", "nosniff");
+  secured.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  secured.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  secured.headers.set("X-Frame-Options", "DENY");
+  return secured;
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -27,31 +35,31 @@ interface ExecutionContext {
 // const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
 
 const worker = {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     try {
       const authResponse = await handleAuthRequest(request, env);
-      if (authResponse) return authResponse;
+      if (authResponse) return withSecurityHeaders(authResponse);
     } catch (error) {
       console.error("timeit-auth-request-failed", error);
-      return Response.json(
+      return withSecurityHeaders(Response.json(
         { error: "계정 처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요." },
         { status: 500, headers: { "Cache-Control": "no-store" } },
-      );
+      ));
     }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      return handleImageOptimization(request, {
+      return withSecurityHeaders(await handleImageOptimization(request, {
         fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
         transformImage: async (body, { width, format, quality }) => {
           const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
           return result.response();
         },
-      }, allowedWidths);
+      }, allowedWidths));
     }
 
-    return handler.fetch(request, env, ctx);
+    return withSecurityHeaders(await handler.fetch(request, env, ctx));
   },
 };
 
