@@ -65,6 +65,23 @@ type GoogleOAuthApi = {
 
 type PlannerTheme = "milk" | "fog" | "rose";
 
+type AuthUser = {
+  id: string;
+  email: string;
+  name: string;
+};
+
+type AccountData = {
+  subjects: Subject[];
+  todos: Todo[];
+  studyLogs: StudyLog[];
+  selectedSubject: string;
+  isDark: boolean;
+  plannerTheme: PlannerTheme;
+  profileName: string;
+  profileColor: string;
+};
+
 const GOOGLE_CLIENT_ID = "322831832887-fm9l7tdqbp1qgfd6v52rirbt4b1nmdt6.apps.googleusercontent.com";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 let googleIdentityScriptPromise: Promise<void> | null = null;
@@ -329,6 +346,11 @@ export default function Home() {
   const [googleAuthBusy, setGoogleAuthBusy] = useState(false);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [calendarSyncMessage, setCalendarSyncMessage] = useState("Google 캘린더를 연결하면 휴대폰 일정이 여기에 표시돼요.");
+  const [storageReady, setStorageReady] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [accountDataReady, setAccountDataReady] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
   useEffect(() => {
     const isDemo = window.location.hostname.split(".")[0] === "timeit-demo";
@@ -354,6 +376,7 @@ export default function Home() {
         setProfileName("민지");
         setProfileColor("#cf927f");
         setPlannerTheme("milk");
+        setStorageReady(true);
         return;
       }
     }
@@ -382,36 +405,137 @@ export default function Home() {
     if (storageVersion === expectedStorageVersion && savedProfileName) setProfileName(savedProfileName);
     if (storageVersion === expectedStorageVersion && savedProfileColor) setProfileColor(savedProfileColor);
     window.localStorage.removeItem("timeit-calendar-schedules");
+    setStorageReady(true);
   }, []);
 
   useEffect(() => {
+    if (!storageReady) return;
     window.localStorage.setItem("timeit-todos", JSON.stringify(todos));
-  }, [todos]);
+  }, [storageReady, todos]);
 
   useEffect(() => {
+    if (!storageReady) return;
     window.localStorage.setItem("timeit-theme", isDark ? "dark" : "light");
-  }, [isDark]);
+  }, [isDark, storageReady]);
 
   useEffect(() => {
+    if (!storageReady) return;
     window.localStorage.setItem("timeit-study-logs", JSON.stringify(studyLogs));
-  }, [studyLogs]);
+  }, [storageReady, studyLogs]);
 
   useEffect(() => {
+    if (!storageReady) return;
     window.localStorage.setItem("timeit-subjects", JSON.stringify(subjects));
     window.localStorage.setItem("timeit-subject-minutes", JSON.stringify(Object.fromEntries(subjects.map((subject) => [subject.id, subject.minutes]))));
-  }, [subjects]);
+  }, [storageReady, subjects]);
 
   useEffect(() => {
+    if (!storageReady) return;
     window.localStorage.setItem("timeit-planner-theme", plannerTheme);
-  }, [plannerTheme]);
+  }, [plannerTheme, storageReady]);
 
   useEffect(() => {
+    if (!storageReady) return;
     window.localStorage.setItem("timeit-profile-name", profileName);
-  }, [profileName]);
+  }, [profileName, storageReady]);
 
   useEffect(() => {
+    if (!storageReady) return;
     window.localStorage.setItem("timeit-profile-color", profileColor);
-  }, [profileColor]);
+  }, [profileColor, storageReady]);
+
+  const accountSnapshot = (): AccountData => ({
+    subjects,
+    todos,
+    studyLogs,
+    selectedSubject,
+    isDark,
+    plannerTheme,
+    profileName,
+    profileColor,
+  });
+
+  const applyAccountData = (data: AccountData, user: AuthUser) => {
+    const nextSubjects = Array.isArray(data.subjects) && data.subjects.length ? data.subjects : initialSubjects;
+    setSubjects(nextSubjects);
+    setTodos(Array.isArray(data.todos) ? data.todos : []);
+    setStudyLogs(Array.isArray(data.studyLogs) ? data.studyLogs : []);
+    setSelectedSubject(nextSubjects.some((subject) => subject.id === data.selectedSubject) ? data.selectedSubject : nextSubjects[0].id);
+    setIsDark(Boolean(data.isDark));
+    if (data.plannerTheme === "milk" || data.plannerTheme === "fog" || data.plannerTheme === "rose") setPlannerTheme(data.plannerTheme);
+    setProfileName(typeof data.profileName === "string" && data.profileName.trim() ? data.profileName : user.name);
+    if (typeof data.profileColor === "string" && /^#[0-9a-f]{6}$/i.test(data.profileColor)) setProfileColor(data.profileColor);
+  };
+
+  const saveAccountData = async (data: AccountData) => {
+    const response = await fetch("/api/user-data", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data }),
+    });
+    if (!response.ok) throw new Error("account-save-failed");
+  };
+
+  const loadAccountData = async (user: AuthUser) => {
+    setAuthUser(user);
+    setAccountDataReady(false);
+    const response = await fetch("/api/user-data", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error("account-load-failed");
+    const payload = await response.json() as { data: AccountData | null };
+    if (payload.data) applyAccountData(payload.data, user);
+    else {
+      const firstData = { ...accountSnapshot(), profileName: profileName.trim() || user.name };
+      setProfileName(firstData.profileName);
+      await saveAccountData(firstData);
+    }
+    setAccountDataReady(true);
+  };
+
+  useEffect(() => {
+    if (!storageReady) return;
+    let active = true;
+    fetch("/api/auth/session", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("session-failed");
+        const payload = await response.json() as { user: AuthUser | null };
+        if (!active) return;
+        if (payload.user) await loadAccountData(payload.user);
+      })
+      .catch(() => undefined)
+      .finally(() => { if (active) setAuthReady(true); });
+    return () => { active = false; };
+  }, [storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !authReady || !authUser || !accountDataReady) return;
+    const timeout = window.setTimeout(() => {
+      void saveAccountData(accountSnapshot());
+    }, 650);
+    return () => window.clearTimeout(timeout);
+  }, [accountDataReady, authReady, authUser, isDark, plannerTheme, profileColor, profileName, selectedSubject, storageReady, studyLogs, subjects, todos]);
+
+  const handleAuthenticated = async (user: AuthUser) => {
+    await loadAccountData(user);
+    setAuthReady(true);
+    setIsAuthOpen(false);
+  };
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    setAuthUser(null);
+    setAccountDataReady(false);
+    setSubjects(initialSubjects);
+    setTodos(initialTodos);
+    setStudyLogs(initialStudyLogs);
+    setSelectedSubject(initialSubjects[0].id);
+    setProfileName("");
+    setProfileColor("#e5a089");
+    setIsRunning(false);
+    setSeconds(0);
+    setSessionStartMinutes(null);
+    ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-profile-name", "timeit-profile-color"].forEach((key) => window.localStorage.removeItem(key));
+    setIsAuthOpen(false);
+  };
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -672,7 +796,9 @@ export default function Home() {
         <header className="topbar">
           <button className="avatar" aria-label="프로필">{profileName.trim().slice(0, 1) || "나"}</button>
           <div className="brand">timeit<span>°</span></div>
-          <span className="topbar-spacer" aria-hidden="true" />
+          <button className={`auth-trigger ${authUser ? "signed-in" : ""}`} onClick={() => setIsAuthOpen(true)} disabled={!authReady} aria-label={authUser ? "내 계정 열기" : "로그인 및 회원가입"}>
+            {authUser ? <><i>{authUser.name.slice(0, 1)}</i><span>내 계정</span></> : "로그인"}
+          </button>
         </header>
 
         <div className="content-scroll">
@@ -692,9 +818,9 @@ export default function Home() {
         <nav className="bottom-nav" aria-label="주요 메뉴">
           {[
             { id: "home" as Screen, icon: House, label: "홈" },
-            { id: "planner" as Screen, icon: CalendarDays, label: "플래너" },
-            { id: "timer" as Screen, icon: Timer, label: "타이머" },
             { id: "stats" as Screen, icon: BarChart3, label: "통계" },
+            { id: "timer" as Screen, icon: Timer, label: "타이머" },
+            { id: "planner" as Screen, icon: CalendarDays, label: "플래너" },
             { id: "settings" as Screen, icon: Settings2, label: "설정" },
           ].map(({ id, icon: NavIcon, label }) => (
             <button key={id} className={`nav-item ${screen === id ? "active" : ""}`} onClick={() => setScreen(id)} aria-current={screen === id ? "page" : undefined}>
@@ -703,8 +829,74 @@ export default function Home() {
           ))}
         </nav>
       </section>
+      {isAuthOpen && <AuthDialog user={authUser} onClose={() => setIsAuthOpen(false)} onAuthenticated={handleAuthenticated} onLogout={handleLogout} />}
     </main>
   );
+}
+
+function AuthDialog({ user, onClose, onAuthenticated, onLogout }: { user: AuthUser | null; onClose: () => void; onAuthenticated: (user: AuthUser) => Promise<void>; onLogout: () => Promise<void> }) {
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/auth/${mode === "login" ? "login" : "signup"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      });
+      const payload = await response.json() as { user?: AuthUser; error?: string };
+      if (!response.ok || !payload.user) throw new Error(payload.error || "로그인을 완료하지 못했어요.");
+      await onAuthenticated(payload.user);
+    } catch (reason) {
+      setError(reason instanceof Error && reason.message !== "account-load-failed" ? reason.message : "계정 데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <div className="auth-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <button className="auth-close" onClick={onClose} aria-label="닫기">×</button>
+      {user ? <>
+        <div className="account-avatar">{user.name.slice(0, 1)}</div>
+        <span className="section-kicker">TIMEIT ACCOUNT</span>
+        <h2 id="auth-title">{user.name}님의 계정</h2>
+        <p className="account-email">{user.email}</p>
+        <div className="account-sync-state"><i />로그인한 기기에서 공부 기록을 이어볼 수 있어요.</div>
+        <button className="auth-primary auth-logout" onClick={() => void onLogout()}>로그아웃</button>
+      </> : <>
+        <span className="section-kicker">TIMEIT ACCOUNT</span>
+        <h2 id="auth-title">{mode === "login" ? "다시 공부를 이어가요" : "나만의 기록을 시작해요"}</h2>
+        <p className="auth-description">{mode === "login" ? "계정에 저장된 플래너와 공부 시간을 불러옵니다." : "기록이 계정별로 안전하게 분리되어 저장됩니다."}</p>
+        <div className="auth-tabs" role="tablist">
+          <button className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>로그인</button>
+          <button className={mode === "signup" ? "selected" : ""} onClick={() => { setMode("signup"); setError(""); }}>회원가입</button>
+        </div>
+        <form className="auth-form" onSubmit={submit}>
+          {mode === "signup" && <label><span>이름</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="사용할 이름" minLength={2} maxLength={24} required /></label>}
+          <label><span>이메일</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@example.com" required /></label>
+          <label><span>비밀번호</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="8자 이상 입력" minLength={8} maxLength={128} required /></label>
+          {error && <p className="auth-error" role="alert">{error}</p>}
+          <button className="auth-primary" type="submit" disabled={busy}>{busy ? "확인 중…" : mode === "login" ? "로그인" : "계정 만들기"}</button>
+        </form>
+        <small className="auth-security-note">비밀번호는 원문으로 저장되지 않아요.</small>
+      </>}
+    </section>
+  </div>;
 }
 
 function HomeScreen({ totalToday, todos, subjects, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo, onTimer, onNavigate }: { totalToday: number; todos: Todo[]; subjects: Subject[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void; onTimer: (subject?: string) => void; onNavigate: (screen: Screen) => void }) {

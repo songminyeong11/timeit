@@ -29,9 +29,12 @@ test("server-renders the Timeit study dashboard", async () => {
 });
 
 test("keeps automatic timer logging and readable planning affordances wired", async () => {
-  const [page, css] = await Promise.all([
+  const [page, css, workerAuth, workerIndex, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../worker/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /if \(isRunning\) \{\s*saveSession\(\);/);
@@ -120,6 +123,23 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /body:has\(\.app-shell:not\(\.dark\)\.planner-theme-fog\)/);
   assert.doesNotMatch(css, /\.app-shell \{[^}]*background: #ece9e5/);
   assert.doesNotMatch(css, /\.dark\.app-shell \{ background: radial-gradient/);
+  assert.match(page, /\{ id: "stats" as Screen, icon: BarChart3, label: "통계" \},\s*\{ id: "timer"/);
+  assert.match(page, /\{ id: "planner" as Screen, icon: CalendarDays, label: "플래너" \}/);
+  assert.match(page, /className=\{`auth-trigger/);
+  assert.match(page, /function AuthDialog/);
+  assert.match(page, /\/api\/auth\/session/);
+  assert.match(page, /\/api\/user-data/);
+  assert.match(page, /accountDataReady/);
+  assert.match(css, /\.auth-overlay/);
+  assert.match(css, /\.auth-dialog/);
+  assert.equal(JSON.parse(hosting).d1, "DB");
+  assert.match(workerIndex, /handleAuthRequest/);
+  assert.match(workerAuth, /PBKDF2/);
+  assert.match(workerAuth, /iterations: PASSWORD_ITERATIONS/);
+  assert.match(workerAuth, /HttpOnly; Secure; SameSite=Lax/);
+  assert.match(workerAuth, /origin === new URL\(request\.url\)\.origin/);
+  assert.match(workerAuth, /ON CONFLICT\(user_id\) DO UPDATE/);
+  assert.doesNotMatch(workerAuth, /localStorage/);
   assert.match(page, /"중지"/);
 });
 

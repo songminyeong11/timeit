@@ -2,6 +2,15 @@
   "name": "timeit",
   "main": "dist/server/index.js",
   "compatibility_date": "2026-07-28",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": "dist/client" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "timeit-users",
+      "database_id": "e843ff7a-7d06-41c9-9e91-9af3a7a7eb54",
+      "migrations_dir": "drizzle"
+    }
+  ],
   "observability": { "enabled": true }
 }
