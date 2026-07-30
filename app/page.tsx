@@ -63,12 +63,38 @@ type GoogleOAuthApi = {
   revoke: (token: string, callback?: () => void) => void;
 };
 
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+type GoogleIdentityApi = {
+  initialize: (options: {
+    client_id: string;
+    callback: (response: GoogleCredentialResponse) => void;
+    auto_select?: boolean;
+    cancel_on_tap_outside?: boolean;
+    context?: "signin" | "signup" | "use";
+  }) => void;
+  renderButton: (element: HTMLElement, options: {
+    type?: "standard" | "icon";
+    theme?: "outline" | "filled_blue" | "filled_black";
+    size?: "large" | "medium" | "small";
+    text?: "signin_with" | "signup_with" | "continue_with" | "signin";
+    shape?: "rectangular" | "pill" | "circle" | "square";
+    logo_alignment?: "left" | "center";
+    width?: number;
+    locale?: string;
+  }) => void;
+  disableAutoSelect: () => void;
+};
+
 type PlannerTheme = "milk" | "fog" | "rose";
 
 type AuthUser = {
   id: string;
   email: string;
   name: string;
+  authProvider?: "password" | "google" | "password+google";
 };
 
 type AccountData = {
@@ -98,6 +124,8 @@ const GOOGLE_CLIENT_ID = "322831832887-fm9l7tdqbp1qgfd6v52rirbt4b1nmdt6.apps.goo
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const ACTIVE_TIMER_KEY = "timeit-active-timer-v1";
 let googleIdentityScriptPromise: Promise<void> | null = null;
+let googleIdInitialized = false;
+let googleCredentialHandler: ((credential: string) => void) | null = null;
 
 const initialSubjects: Subject[] = [
   { id: "focus", name: "공부", short: "공", color: "#8d9bc4", soft: "#e5eaf5", minutes: 0 },
@@ -257,9 +285,13 @@ function googleOAuthApi() {
   return (window as Window & { google?: { accounts?: { oauth2?: GoogleOAuthApi } } }).google?.accounts?.oauth2;
 }
 
+function googleIdentityApi() {
+  return (window as Window & { google?: { accounts?: { id?: GoogleIdentityApi } } }).google?.accounts?.id;
+}
+
 function loadGoogleIdentityServices() {
   if (typeof window === "undefined") return Promise.reject(new Error("browser-only"));
-  if (googleOAuthApi()) return Promise.resolve();
+  if (googleOAuthApi() && googleIdentityApi()) return Promise.resolve();
   if (googleIdentityScriptPromise) return googleIdentityScriptPromise;
   googleIdentityScriptPromise = new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
@@ -1038,6 +1070,7 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
   const [newPassword, setNewPassword] = useState("");
   const [accountMessage, setAccountMessage] = useState("");
   const dialogRef = useRef<HTMLElement>(null);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -1069,6 +1102,66 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
       window.removeEventListener("keydown", handleKeyboard);
     };
   }, [onClose]);
+
+  useEffect(() => {
+    if (user || recoveryCode || !googleButtonRef.current) return;
+    let cancelled = false;
+    const buttonHost = googleButtonRef.current;
+    googleCredentialHandler = async (credential) => {
+      if (cancelled) return;
+      setBusy(true);
+      setError("");
+      try {
+        const response = await fetch("/api/auth/google", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential }),
+        });
+        const payload = await response.json() as { user?: AuthUser; error?: string };
+        if (!response.ok || !payload.user) throw new Error(payload.error || "Google 로그인을 완료하지 못했어요.");
+        await onAuthenticated(payload.user);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Google 로그인을 완료하지 못했어요.");
+      } finally {
+        setBusy(false);
+      }
+    };
+    void loadGoogleIdentityServices().then(() => {
+      if (cancelled) return;
+      const identity = googleIdentityApi();
+      if (!identity) throw new Error("google-identity-not-ready");
+      if (!googleIdInitialized) {
+        identity.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: (response) => {
+            if (response.credential) googleCredentialHandler?.(response.credential);
+          },
+          auto_select: false,
+          cancel_on_tap_outside: true,
+          context: "use",
+        });
+        googleIdInitialized = true;
+      }
+      buttonHost.replaceChildren();
+      identity.renderButton(buttonHost, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        shape: "pill",
+        logo_alignment: "left",
+        width: Math.max(240, Math.floor(buttonHost.clientWidth)),
+        locale: "ko",
+      });
+    }).catch(() => {
+      if (!cancelled) setError("Google 로그인 버튼을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+    });
+    return () => {
+      cancelled = true;
+      if (googleCredentialHandler) googleCredentialHandler = null;
+      buttonHost.replaceChildren();
+    };
+  }, [onAuthenticated, recoveryCode, user]);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1184,10 +1277,12 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
           <div className="account-color-picker"><span>프로필 색상</span><div>{["#e5a089", "#8d9bc4", "#7eae99", "#b78aac", "#8b827c"].map((color) => <button type="button" className={draftColor === color ? "selected" : ""} onClick={() => setDraftColor(color)} style={{ background: color }} aria-label={`${color} 프로필 색상`} key={color} />)}</div></div>
           <button className="account-save-button" onClick={() => void saveProfile()} disabled={busy}>변경사항 저장</button>
         </div>}
-        <div className="account-menu">
-          <button onClick={() => { setAccountSection(accountSection === "password" ? "none" : "password"); setRecoveryCode(""); setAccountMessage(""); }}><span>비밀번호 변경</span><b>›</b></button>
-          <button onClick={() => { setAccountSection(accountSection === "recovery" ? "none" : "recovery"); setRecoveryCode(""); setAccountMessage(""); }}><span>복구 코드 관리</span><small>분실 대비</small><b>›</b></button>
-        </div>
+        {user.authProvider === "google"
+          ? <div className="account-provider-note"><span className="google-provider-mark">G</span><div><strong>Google 계정으로 로그인 중</strong><small>비밀번호 없이 {user.email} 계정으로 안전하게 로그인해요.</small></div></div>
+          : <div className="account-menu">
+            <button onClick={() => { setAccountSection(accountSection === "password" ? "none" : "password"); setRecoveryCode(""); setAccountMessage(""); }}><span>비밀번호 변경</span><b>›</b></button>
+            <button onClick={() => { setAccountSection(accountSection === "recovery" ? "none" : "recovery"); setRecoveryCode(""); setAccountMessage(""); }}><span>복구 코드 관리</span><small>분실 대비</small><b>›</b></button>
+          </div>}
         {accountSection === "password" && <form className="account-inline-form" onSubmit={changePassword}>
           <label><span>현재 비밀번호</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></label>
           <label><span>새 비밀번호</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={8} placeholder="8자 이상" required /></label>
@@ -1212,6 +1307,10 @@ function AuthDialog({ user, profileName, profileColor, profileStatus, onClose, o
           <span className="section-kicker">TIMEIT</span>
           <h2 id="auth-title">{mode === "login" ? "로그인" : mode === "signup" ? "타임잇 시작하기" : "비밀번호 찾기"}</h2>
           <p className="auth-description">{mode === "login" ? "저장한 공부 기록을 불러와 바로 이어서 시작하세요." : mode === "signup" ? "기록을 안전하게 저장하고 다른 기기에서도 이어서 사용할 수 있어요." : "가입 이메일과 보관해 둔 복구 코드로 새 비밀번호를 설정하세요."}</p>
+          {mode !== "reset" && <>
+            <div className={`google-signin-host ${busy ? "is-busy" : ""}`} ref={googleButtonRef} aria-label="Google 계정으로 계속하기" />
+            <div className="auth-divider"><span>또는 이메일로 계속</span></div>
+          </>}
           {mode !== "reset" && <div className="auth-tabs" role="tablist">
             <button role="tab" aria-selected={mode === "login"} className={mode === "login" ? "selected" : ""} onClick={() => { setMode("login"); setError(""); }}>로그인</button>
             <button role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "selected" : ""} onClick={() => { setMode("signup"); setError(""); }}>회원가입</button>

@@ -8,6 +8,8 @@ export const users = sqliteTable("users", {
   passwordSalt: text("password_salt").notNull(),
   recoveryHash: text("recovery_hash"),
   recoverySalt: text("recovery_salt"),
+  googleSub: text("google_sub").unique(),
+  authProvider: text("auth_provider").notNull().default("password"),
   createdAt: integer("created_at").notNull(),
 });
 

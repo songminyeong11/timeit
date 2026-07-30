@@ -1,3 +1,5 @@
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
 export type AuthEnv = {
   DB?: D1Database;
 };
@@ -6,8 +8,11 @@ type AuthUser = {
   id: string;
   email: string;
   name: string;
+  authProvider: "password" | "google" | "password+google";
 };
 
+const GOOGLE_CLIENT_ID = "322831832887-fm9l7tdqbp1qgfd6v52rirbt4b1nmdt6.apps.googleusercontent.com";
+const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
 const SESSION_COOKIE = "timeit_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 const PASSWORD_ITERATIONS = 100_000;
@@ -108,6 +113,9 @@ async function ensureSchema(db: D1Database) {
   const columnNames = new Set((userColumns.results ?? []).map((column) => column.name));
   if (!columnNames.has("recovery_hash")) await db.prepare("ALTER TABLE users ADD COLUMN recovery_hash TEXT").run();
   if (!columnNames.has("recovery_salt")) await db.prepare("ALTER TABLE users ADD COLUMN recovery_salt TEXT").run();
+  if (!columnNames.has("google_sub")) await db.prepare("ALTER TABLE users ADD COLUMN google_sub TEXT").run();
+  if (!columnNames.has("auth_provider")) await db.prepare("ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'password'").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_unique ON users(google_sub)").run();
 }
 
 async function currentUser(request: Request, db: D1Database): Promise<AuthUser | null> {
@@ -116,7 +124,7 @@ async function currentUser(request: Request, db: D1Database): Promise<AuthUser |
   const tokenHash = await sha256(token);
   const now = Date.now();
   const row = await db.prepare(
-    "SELECT users.id, users.email, users.display_name AS name FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?",
+    "SELECT users.id, users.email, users.display_name AS name, users.auth_provider AS authProvider FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?",
   ).bind(tokenHash, now).first<AuthUser>();
   if (!row) await db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash).run();
   return row ?? null;
@@ -191,6 +199,30 @@ async function verifiedPasswordUser(db: D1Database, userId: string, password: st
   return row && safeEqual(candidateHash, row.passwordHash) ? row : null;
 }
 
+async function verifiedGoogleIdentity(credential: string) {
+  if (!credential || credential.length > 8_192) return null;
+  try {
+    const { payload } = await jwtVerify(credential, GOOGLE_JWKS, {
+      audience: GOOGLE_CLIENT_ID,
+      issuer: ["https://accounts.google.com", "accounts.google.com"],
+    });
+    const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+    const name = typeof payload.name === "string" ? payload.name.trim().slice(0, 24) : "";
+    const sub = typeof payload.sub === "string" ? payload.sub : "";
+    const emailVerified = payload.email_verified === true || payload.email_verified === "true";
+    const hostedDomain = typeof payload.hd === "string" ? payload.hd : "";
+    if (!sub || !email || !emailVerified || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+    return {
+      sub,
+      email,
+      name: name.length >= 2 ? name : email.split("@")[0].slice(0, 24),
+      authoritativeEmail: email.endsWith("@gmail.com") || Boolean(hostedDomain),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function handleAuthRequest(request: Request, env: AuthEnv) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/auth/") && !url.pathname.startsWith("/api/account/") && url.pathname !== "/api/user-data") return null;
@@ -204,6 +236,60 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
     return json({ user: await currentUser(request, db) });
   }
 
+  if (url.pathname === "/api/auth/google" && request.method === "POST") {
+    const body = await readJsonBody<{ credential?: unknown }>(request);
+    const credential = typeof body?.credential === "string" ? body.credential : "";
+    const identity = await verifiedGoogleIdentity(credential);
+    if (!identity) return json({ error: "Google 로그인을 확인하지 못했어요. 다시 시도해 주세요." }, 401);
+
+    let row = await db.prepare(
+      "SELECT id, email, display_name AS name, auth_provider AS authProvider FROM users WHERE google_sub = ?",
+    ).bind(identity.sub).first<AuthUser>();
+
+    if (!row) {
+      const emailUser = await db.prepare(
+        "SELECT id, email, display_name AS name, auth_provider AS authProvider, google_sub AS googleSub FROM users WHERE email = ?",
+      ).bind(identity.email).first<AuthUser & { googleSub: string | null }>();
+      if (emailUser) {
+        if (emailUser.googleSub && emailUser.googleSub !== identity.sub) {
+          return json({ error: "이 이메일은 다른 Google 계정과 연결되어 있어요." }, 409);
+        }
+        if (!identity.authoritativeEmail) {
+          return json({ error: "기존 계정 보호를 위해 먼저 이메일과 비밀번호로 로그인한 뒤 Google 계정을 연결해 주세요." }, 409);
+        }
+        const authProvider = emailUser.authProvider === "password" ? "password+google" : emailUser.authProvider;
+        await db.prepare("UPDATE users SET google_sub = ?, auth_provider = ? WHERE id = ?")
+          .bind(identity.sub, authProvider, emailUser.id)
+          .run();
+        row = { ...emailUser, authProvider };
+      } else {
+        const userId = crypto.randomUUID();
+        const salt = randomToken(16);
+        const unavailablePassword = randomToken(48);
+        try {
+          await db.prepare(
+            "INSERT INTO users (id, email, display_name, password_hash, password_salt, google_sub, auth_provider, created_at) VALUES (?, ?, ?, ?, ?, ?, 'google', ?)",
+          ).bind(
+            userId,
+            identity.email,
+            identity.name,
+            await passwordHash(unavailablePassword, salt),
+            salt,
+            identity.sub,
+            Date.now(),
+          ).run();
+          row = { id: userId, email: identity.email, name: identity.name, authProvider: "google" };
+        } catch {
+          row = await db.prepare(
+            "SELECT id, email, display_name AS name, auth_provider AS authProvider FROM users WHERE google_sub = ?",
+          ).bind(identity.sub).first<AuthUser>();
+          if (!row) return json({ error: "Google 계정을 연결하지 못했어요. 다시 시도해 주세요." }, 409);
+        }
+      }
+    }
+    return createSession(db, row);
+  }
+
   if (url.pathname === "/api/auth/signup" && request.method === "POST") {
     const body = await readJsonBody<{ name?: unknown; email?: unknown; password?: unknown }>(request);
     const name = typeof body?.name === "string" ? body.name.trim() : "";
@@ -214,7 +300,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
     if (password.length < 8 || password.length > 128) return json({ error: "비밀번호는 8자 이상 입력해 주세요." }, 400);
     const existing = await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
     if (existing) return json({ error: "이미 가입된 이메일이에요." }, 409);
-    const user = { id: crypto.randomUUID(), email, name };
+    const user: AuthUser = { id: crypto.randomUUID(), email, name, authProvider: "password" };
     const salt = randomToken(16);
     const nextRecoveryCode = recoveryCode();
     const recoverySalt = randomToken(16);
@@ -235,7 +321,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
     if (lockRemaining > 0) {
       return json({ error: "로그인 시도가 너무 많아요. 15분 뒤 다시 시도해 주세요." }, 429, { "Retry-After": String(Math.ceil(lockRemaining / 1000)) });
     }
-    const row = await db.prepare("SELECT id, email, display_name AS name, password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE email = ?")
+    const row = await db.prepare("SELECT id, email, display_name AS name, auth_provider AS authProvider, password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE email = ?")
       .bind(email)
       .first<AuthUser & { passwordHash: string; passwordSalt: string }>();
     const candidateHash = await passwordHash(password, row?.passwordSalt ?? "timeit-invalid-account-salt");
@@ -244,7 +330,7 @@ export async function handleAuthRequest(request: Request, env: AuthEnv) {
       return json({ error: "이메일 또는 비밀번호를 확인해 주세요." }, 401);
     }
     await clearAuthFailures(db, attemptKey);
-    return createSession(db, { id: row.id, email: row.email, name: row.name });
+    return createSession(db, { id: row.id, email: row.email, name: row.name, authProvider: row.authProvider });
   }
 
   if (url.pathname === "/api/auth/logout" && request.method === "POST") {
