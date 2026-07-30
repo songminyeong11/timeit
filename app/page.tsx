@@ -107,6 +107,35 @@ function todayLabel(date = new Date()) {
   return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 ${weekdays[date.getDay()]}요일`;
 }
 
+function dateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function dateFromKey(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function dateLabelFromKey(value: string) {
+  return todayLabel(dateFromKey(value));
+}
+
+function shiftDateKey(value: string, amount: number) {
+  const date = dateFromKey(value);
+  date.setDate(date.getDate() + amount);
+  return dateKey(date);
+}
+
+function logDateKey(log: StudyLog) {
+  return log.recordedAt ? dateKey(new Date(log.recordedAt)) : dateKey();
+}
+
+function recordedAtForDate(value: string, startMinutes: number) {
+  const date = dateFromKey(value);
+  date.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+  return date.toISOString();
+}
+
 function formatDuration(totalSeconds: number) {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -157,6 +186,7 @@ export default function Home() {
   const [plannerTheme, setPlannerTheme] = useState<PlannerTheme>("milk");
   const [profileName, setProfileName] = useState("");
   const [profileColor, setProfileColor] = useState("#e5a089");
+  const [plannerDate, setPlannerDate] = useState(() => dateKey());
 
   useEffect(() => {
     const isDemo = window.location.hostname.split(".")[0] === "timeit-demo";
@@ -272,7 +302,7 @@ export default function Home() {
   const activeSubject = subjects.find((subject) => subject.id === selectedSubject) ?? subjects[0];
   const totalToday = subjects.reduce((sum, subject) => sum + subject.minutes, 0) + Math.floor(seconds / 60);
   const liveSession = isRunning && sessionStartMinutes !== null && seconds > 0
-    ? { id: "live-session", subjectId: selectedSubject, startMinutes: sessionStartMinutes, durationMinutes: Math.max(10, Math.ceil((seconds / 60) / 10) * 10), trackedMinutes: Math.floor(seconds / 60) }
+    ? { id: "live-session", subjectId: selectedSubject, startMinutes: sessionStartMinutes, durationMinutes: Math.max(10, Math.ceil((seconds / 60) / 10) * 10), trackedMinutes: Math.floor(seconds / 60), recordedAt: new Date().toISOString() }
     : null;
   const toggleTodo = (id: number) => {
     setTodos((items) => items.map((todo) => todo.id === id ? { ...todo, done: !todo.done } : todo));
@@ -458,7 +488,7 @@ export default function Home() {
             <HomeScreen totalToday={totalToday} todos={todos} subjects={subjects} selectedSubject={selectedSubject} setSelectedSubject={setSelectedSubject} toggleTodo={toggleTodo} isAdding={isAdding} setIsAdding={setIsAdding} newTodo={newTodo} setNewTodo={setNewTodo} addTodo={addTodo} onTimer={goTimer} onNavigate={setScreen} />
           )}
           {screen === "planner" && (
-            <PlannerScreen totalToday={totalToday} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} onAddStudyLog={addStudyLog} onUpdateStudyLog={updateStudyLog} onDeleteStudyLog={deleteStudyLog} />
+            <PlannerScreen plannerDate={plannerDate} onPlannerDateChange={setPlannerDate} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} onAddStudyLog={addStudyLog} onUpdateStudyLog={updateStudyLog} onDeleteStudyLog={deleteStudyLog} />
           )}
           {screen === "timer" && (
             <TimerScreen activeSubject={activeSubject} subjects={subjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { setPomodoroPhase((phase) => phase === "집중" ? "휴식" : "집중"); setPomodoroRemaining(pomodoroPhase === "집중" ? 5 * 60 : 25 * 60); }} onReset={resetTimer} savedSession={savedSession} />
@@ -497,8 +527,11 @@ function HomeScreen({ totalToday, todos, subjects, selectedSubject, setSelectedS
   </section>;
 }
 
-function PlannerScreen({ totalToday, subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { totalToday: number; subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
-  return <section className="planner-only"><TimelineGrid totalToday={totalToday} subjects={subjects} studyLogs={studyLogs} onAddStudyLog={onAddStudyLog} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} /></section>;
+function PlannerScreen({ plannerDate, onPlannerDateChange, subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { plannerDate: string; onPlannerDateChange: (value: string) => void; subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
+  const selectedLogs = studyLogs.filter((log) => logDateKey(log) === plannerDate);
+  const selectedTotal = selectedLogs.reduce((sum, log) => sum + loggedMinutes(log), 0);
+  const addLogForSelectedDate = (log: StudyLog) => onAddStudyLog({ ...log, recordedAt: recordedAtForDate(plannerDate, log.startMinutes) });
+  return <section className="planner-only"><TimelineGrid plannerDate={plannerDate} onPlannerDateChange={onPlannerDateChange} selectedTotal={selectedTotal} subjects={subjects} studyLogs={selectedLogs} onAddStudyLog={addLogForSelectedDate} onUpdateStudyLog={onUpdateStudyLog} onDeleteStudyLog={onDeleteStudyLog} /></section>;
 }
 
 function TodoListCard({ className = "", todos, subjects, selectedSubject, setSelectedSubject, toggleTodo, isAdding, setIsAdding, newTodo, setNewTodo, addTodo }: { className?: string; todos: Todo[]; subjects: Subject[]; selectedSubject: string; setSelectedSubject: (value: string) => void; toggleTodo: (id: number) => void; isAdding: boolean; setIsAdding: (value: boolean) => void; newTodo: string; setNewTodo: (value: string) => void; addTodo: () => void }) {
@@ -509,11 +542,13 @@ function TodoListCard({ className = "", todos, subjects, selectedSubject, setSel
   </section>;
 }
 
-function TimelineGrid({ totalToday, subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { totalToday: number; subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
+function TimelineGrid({ plannerDate, onPlannerDateChange, selectedTotal, subjects, studyLogs, onAddStudyLog, onUpdateStudyLog, onDeleteStudyLog }: { plannerDate: string; onPlannerDateChange: (value: string) => void; selectedTotal: number; subjects: Subject[]; studyLogs: StudyLog[]; onAddStudyLog: (log: StudyLog) => void; onUpdateStudyLog: (id: string, log: Pick<StudyLog, "subjectId" | "startMinutes" | "durationMinutes">) => void; onDeleteStudyLog: (id: string) => void }) {
   const slots = Array.from({ length: 144 }, (_, index) => index);
   const hours = Array.from({ length: 24 }, (_, index) => index);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [isDateEditing, setIsDateEditing] = useState(false);
+  const [dateDraft, setDateDraft] = useState(plannerDate);
   const [draft, setDraft] = useState({ subjectId: subjects[0]?.id ?? "math", startTime: "08:00", duration: 60 });
   const slotLog = (slot: number) => studyLogs.find((log) => {
     const minute = slot * 10;
@@ -546,10 +581,22 @@ function TimelineGrid({ totalToday, subjects, studyLogs, onAddStudyLog, onUpdate
     setEditingLogId(null);
   };
 
+  const changeDate = (nextDate: string) => {
+    onPlannerDateChange(nextDate);
+    setDateDraft(nextDate);
+    setEditingLogId(null);
+  };
+
+  const finishDateEditing = () => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateDraft)) changeDate(dateDraft);
+    else setDateDraft(plannerDate);
+    setIsDateEditing(false);
+  };
+
   return <section className="planner-card timetable-card">
     <div className="planner-card-header timetable-heading">
-    <div className="timeline-title"><span className="section-kicker">STUDY TIMELINE</span><h2>{todayLabel()}</h2><small>24시간 · 10분 단위</small></div>
-      <div className="timeline-header-side"><button className="timeline-edit-toggle" onClick={() => { setIsEditorOpen((value) => !value); setEditingLogId(null); }}>기록 수정</button><span className="timeline-today-time">오늘 순공 <b>{formatDuration(totalToday * 60)}</b></span></div>
+      <div className="timeline-title"><span className="section-kicker">STUDY TIMELINE</span><div className="timeline-date-nav"><button className="date-arrow" onClick={() => changeDate(shiftDateKey(plannerDate, -1))} aria-label="이전 날짜">‹</button>{isDateEditing ? <input autoFocus type="date" value={dateDraft} onChange={(event) => setDateDraft(event.target.value)} onBlur={finishDateEditing} onKeyDown={(event) => { if (event.key === "Enter") finishDateEditing(); if (event.key === "Escape") { setDateDraft(plannerDate); setIsDateEditing(false); } }} aria-label="플래너 날짜 직접 입력" /> : <button className="timeline-date-button" onClick={() => { setDateDraft(plannerDate); setIsDateEditing(true); }}><h2>{dateLabelFromKey(plannerDate)}</h2></button>}<button className="date-arrow" onClick={() => changeDate(shiftDateKey(plannerDate, 1))} aria-label="다음 날짜">›</button></div><small>날짜를 눌러 직접 입력 · 24시간 10분 단위</small></div>
+      <div className="timeline-header-side"><button className="timeline-edit-toggle" onClick={() => { setIsEditorOpen((value) => !value); setEditingLogId(null); }}>기록 수정</button><span className="timeline-today-time">{plannerDate === dateKey() ? "오늘" : "선택일"} 순공 <b>{formatDuration(selectedTotal * 60)}</b></span></div>
     </div>
     <div className="timeline-legend">{subjects.map((subject) => <span key={subject.id}><i style={{ background: subject.color }} />{subject.name}</span>)}</div>
     <p className="timetable-helper">타이머 기록이 과목 색상의 형광펜 칸으로 채워져요.</p>
@@ -623,9 +670,9 @@ function SettingsPanel({ subjects, onAddSubject, onDeleteSubject, isDark, setIsD
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [subjectName, setSubjectName] = useState("");
   const themes: { id: PlannerTheme; label: string; description: string }[] = [
-    { id: "milk", label: "밀크티 베이지", description: "따뜻하고 차분한 노트" },
-    { id: "lavender", label: "라일락 노트", description: "맑은 보랏빛 포인트" },
-    { id: "sage", label: "세이지 그린", description: "눈이 편한 초록 노트" },
+    { id: "milk", label: "웜 베이지", description: "가장 편안한 크림빛 배경" },
+    { id: "lavender", label: "소프트 라일락", description: "은은하고 맑은 보랏빛 배경" },
+    { id: "sage", label: "라이트 세이지", description: "오래 봐도 편한 연초록 배경" },
   ];
   const selectedTheme = themes.find((theme) => theme.id === plannerTheme)!;
 

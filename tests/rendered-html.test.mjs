@@ -40,7 +40,7 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /monthHours\.map/);
   assert.match(page, /displayHours\(hours\)/);
   assert.match(page, /TodoListCard className="home-todo-card"/);
-  assert.match(page, /function PlannerScreen\(\{ totalToday, subjects, studyLogs/);
+  assert.match(page, /function PlannerScreen\(\{ plannerDate, onPlannerDateChange, subjects, studyLogs/);
   assert.match(css, /\.bottom-nav \{ position: fixed;/);
   assert.match(css, /\.grass-hours span b/);
   assert.match(css, /\.dark \.home-v3/);
@@ -69,9 +69,16 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(css, /\.dark \.time-slot\.filled/);
   assert.match(css, /\.timeline-editor/);
   assert.match(page, /timeline-today-time/);
+  assert.match(page, /const selectedLogs = studyLogs\.filter\(\(log\) => logDateKey\(log\) === plannerDate\)/);
+  assert.match(page, /shiftDateKey\(plannerDate, -1\)/);
+  assert.match(page, /shiftDateKey\(plannerDate, 1\)/);
+  assert.match(page, /type="date" value=\{dateDraft\}/);
+  assert.match(page, /recordedAtForDate\(plannerDate, log\.startMinutes\)/);
   assert.match(page, /stats-period/);
   assert.match(page, /isProfileEditing/);
   assert.match(css, /\.timeline-header-side/);
+  assert.match(css, /\.timeline-date-nav/);
+  assert.match(css, /\.app-shell:not\(\.dark\)\.planner-theme-lavender \{ --paper:/);
   assert.match(css, /\.profile-edit-button/);
   assert.match(page, /"중지"/);
 });
