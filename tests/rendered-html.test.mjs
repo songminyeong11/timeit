@@ -100,7 +100,7 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /다음 세션 자동 시작/);
   assert.match(page, /공부 중 화면 켜짐 유지/);
   assert.match(page, /세션 완료 알림/);
-  assert.match(page, /내 기록 내보내기/);
+  assert.doesNotMatch(page, /내 기록 내보내기/);
   assert.match(page, /className="timer-subject-manager"/);
   assert.match(page, /새 과목 추가/);
   assert.doesNotMatch(page, /<span>과목 관리<\/span>/);
@@ -171,7 +171,16 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /aria-label="계정 정보 열기"/);
   assert.match(page, /className="quick-theme-toggle"/);
   assert.match(page, /className="auth-trigger settings-trigger"/);
+  assert.doesNotMatch(page, /<Settings aria-hidden="true" \/><span>설정<\/span>/);
   assert.match(page, /!authUser && <button className="auth-trigger login-trigger"/);
+  assert.match(page, /최근 집중 기록/);
+  assert.match(page, /studyLogs=\{studyLogs\}/);
+  assert.match(page, /\{ id: "sage", label: "세이지 그린"/);
+  assert.match(page, /\{ id: "lilac", label: "소프트 라일락"/);
+  assert.match(css, /\.app-shell:not\(\.dark\)\.planner-theme-sage/);
+  assert.match(css, /\.app-shell:not\(\.dark\)\.planner-theme-lilac/);
+  assert.match(css, /\.theme-swatch\.sage/);
+  assert.match(css, /\.theme-swatch\.lilac/);
   assert.match(page, /id: "group" as Screen/);
   assert.match(page, /type="date" value=\{birthDate\}/);
   assert.match(page, /다크 모드로 변경/);

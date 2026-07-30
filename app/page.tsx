@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BarChart3, Bell, CalendarDays, ChevronRight, CloudOff, Database, Download, House, Moon, Palette, Settings, ShieldCheck, Sun, Timer, Trash2, UserRound, UsersRound, Volume2 } from "lucide-react";
+import { BarChart3, Bell, CalendarDays, ChevronRight, CloudOff, Database, House, Moon, Palette, Settings, ShieldCheck, Sun, Timer, Trash2, UserRound, UsersRound, Volume2 } from "lucide-react";
 import { getKoreanHolidays } from "./korean-holidays";
 import { GroupScreen } from "./group-screen";
 
@@ -89,7 +89,7 @@ type GoogleIdentityApi = {
   disableAutoSelect: () => void;
 };
 
-type PlannerTheme = "milk" | "fog" | "rose";
+type PlannerTheme = "milk" | "fog" | "sage" | "lilac" | "rose";
 
 type AuthUser = {
   id: string;
@@ -568,7 +568,7 @@ export default function Home() {
     } else {
       setIsDark(savedTheme === "dark");
     }
-    if (savedPlannerTheme === "milk" || savedPlannerTheme === "fog" || savedPlannerTheme === "rose") setPlannerTheme(savedPlannerTheme);
+    if (["milk", "fog", "sage", "lilac", "rose"].includes(savedPlannerTheme ?? "")) setPlannerTheme(savedPlannerTheme as PlannerTheme);
     if (storageVersion === expectedStorageVersion && savedProfileName) setProfileName(savedProfileName);
     if (storageVersion === expectedStorageVersion && savedProfileColor) setProfileColor(savedProfileColor);
     if (storageVersion === expectedStorageVersion && savedProfileStatus) setProfileStatus(savedProfileStatus);
@@ -697,7 +697,7 @@ export default function Home() {
     setStudyLogs(Array.isArray(data.studyLogs) ? data.studyLogs : []);
     setSelectedSubject(nextSubjects.some((subject) => subject.id === data.selectedSubject) ? data.selectedSubject : nextSubjects[0].id);
     setIsDark(Boolean(data.isDark));
-    if (data.plannerTheme === "milk" || data.plannerTheme === "fog" || data.plannerTheme === "rose") setPlannerTheme(data.plannerTheme);
+    if (["milk", "fog", "sage", "lilac", "rose"].includes(data.plannerTheme)) setPlannerTheme(data.plannerTheme);
     setProfileName(typeof data.profileName === "string" && data.profileName.trim() ? data.profileName : user.name);
     if (typeof data.profileColor === "string" && /^#[0-9a-f]{6}$/i.test(data.profileColor)) setProfileColor(data.profileColor);
     setProfileStatus(typeof data.profileStatus === "string" ? data.profileStatus : "");
@@ -1131,23 +1131,6 @@ export default function Home() {
     else window.alert("브라우저 알림 권한이 꺼져 있어요. 사이트 설정에서 알림을 허용해 주세요.");
   };
 
-  const exportStudyData = () => {
-    const blob = new Blob([JSON.stringify({
-      exportedAt: new Date().toISOString(),
-      account: authUser ? { email: authUser.email, name: profileName, birthDate: authUser.birthDate } : null,
-      subjects,
-      todos,
-      studyLogs,
-      preferences,
-    }, null, 2)], { type: "application/json" });
-    const href = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = href;
-    anchor.download = `timeit-backup-${dateKey()}.json`;
-    anchor.click();
-    URL.revokeObjectURL(href);
-  };
-
   const clearStudyRecords = () => {
     if (!studyLogs.length) {
       window.alert("삭제할 공부 기록이 없어요.");
@@ -1209,8 +1192,8 @@ export default function Home() {
             <button className="quick-theme-toggle" onClick={() => setIsDark((value) => !value)} aria-label={isDark ? "라이트 모드로 변경" : "다크 모드로 변경"} title={isDark ? "라이트 모드" : "다크 모드"}>
               {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </button>
-            <button className="auth-trigger settings-trigger" onClick={() => setScreen("settings")} aria-label="설정 열기">
-              <Settings aria-hidden="true" /><span>설정</span>
+            <button className="auth-trigger settings-trigger" onClick={() => setScreen("settings")} aria-label="설정 열기" title="설정">
+              <Settings aria-hidden="true" />
             </button>
             {!authUser && <button className="auth-trigger login-trigger" onClick={() => setIsAuthOpen(true)} disabled={!authReady} aria-label="로그인 및 회원가입">로그인</button>}
           </div>
@@ -1225,11 +1208,11 @@ export default function Home() {
               <PlannerScreen plannerDate={plannerDate} onPlannerDateChange={setPlannerDate} subjects={subjects} studyLogs={liveSession ? [...studyLogs, liveSession] : studyLogs} onAddStudyLog={addStudyLog} onUpdateStudyLog={updateStudyLog} onDeleteStudyLog={deleteStudyLog} calendarSchedules={calendarSchedules} setCalendarSchedules={setCalendarSchedules} googleAccessToken={googleAccessToken} googleReady={googleReady} googleAuthBusy={googleAuthBusy} calendarRefreshKey={calendarRefreshKey} calendarSyncMessage={calendarSyncMessage} onConnectGoogle={() => void connectGoogleCalendar()} onDisconnectGoogle={disconnectGoogleCalendar} onRefreshGoogle={() => setCalendarRefreshKey((value) => value + 1)} onGoogleAuthExpired={() => { setGoogleAccessToken(null); setCalendarSyncMessage("Google 연결 시간이 만료됐어요. 다시 연결해 주세요."); }} onGoogleSyncMessage={setCalendarSyncMessage} />
             )}
             {screen === "timer" && (
-              <TimerScreen activeSubject={activeSubject} subjects={todaySubjects} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} focusMinutes={preferences.focusMinutes} breakMinutes={preferences.breakMinutes} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { const nextPhase = pomodoroPhase === "집중" ? "휴식" : "집중"; setPomodoroPhase(nextPhase); setPomodoroRemaining((nextPhase === "집중" ? preferences.focusMinutes : preferences.breakMinutes) * 60); }} onReset={resetTimer} onAddSubject={addSubject} onDeleteSubject={deleteSubject} savedSession={savedSession} />
+              <TimerScreen activeSubject={activeSubject} subjects={todaySubjects} studyLogs={studyLogs} selectedSubject={selectedSubject} totalToday={totalToday} seconds={seconds} pomodoroRemaining={pomodoroRemaining} isRunning={isRunning} timerMode={timerMode} pomodoroPhase={pomodoroPhase} focusMinutes={preferences.focusMinutes} breakMinutes={preferences.breakMinutes} onChooseSubject={chooseSubject} onToggle={toggleTimer} onChangeMode={changeTimerMode} onChangePhase={() => { const nextPhase = pomodoroPhase === "집중" ? "휴식" : "집중"; setPomodoroPhase(nextPhase); setPomodoroRemaining((nextPhase === "집중" ? preferences.focusMinutes : preferences.breakMinutes) * 60); }} onReset={resetTimer} onAddSubject={addSubject} onDeleteSubject={deleteSubject} onOpenPlanner={() => setScreen("planner")} savedSession={savedSession} />
             )}
             {screen === "stats" && <StatsScreen subjects={subjects} studyLogs={studyLogs} />}
             {screen === "group" && <GroupScreen user={authUser} onOpenAccount={() => setIsAuthOpen(true)} />}
-            {screen === "settings" && <SettingsPanel user={authUser} profileName={profileName} profileColor={profileColor} onOpenAccount={() => setIsAuthOpen(true)} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} preferences={preferences} onUpdatePreferences={updatePreferences} onToggleNotification={() => void toggleCompletionNotification()} onExportData={exportStudyData} onClearStudyRecords={clearStudyRecords} hasStudyRecords={studyLogs.length > 0} />}
+            {screen === "settings" && <SettingsPanel user={authUser} profileName={profileName} profileColor={profileColor} onOpenAccount={() => setIsAuthOpen(true)} isDark={isDark} setIsDark={setIsDark} plannerTheme={plannerTheme} setPlannerTheme={setPlannerTheme} preferences={preferences} onUpdatePreferences={updatePreferences} onToggleNotification={() => void toggleCompletionNotification()} onClearStudyRecords={clearStudyRecords} hasStudyRecords={studyLogs.length > 0} />}
           </div>
         </div>
 
@@ -1691,13 +1674,17 @@ function TimelineGrid({ plannerDate, onPlannerDateChange, selectedTotal, subject
   </section>;
 }
 
-function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, seconds, pomodoroRemaining, isRunning, timerMode, pomodoroPhase, focusMinutes, breakMinutes, onChooseSubject, onToggle, onChangeMode, onChangePhase, onReset, onAddSubject, onDeleteSubject, savedSession }: { activeSubject: Subject; subjects: Subject[]; selectedSubject: string; totalToday: number; seconds: number; pomodoroRemaining: number; isRunning: boolean; timerMode: "stopwatch" | "pomodoro"; pomodoroPhase: "집중" | "휴식"; focusMinutes: number; breakMinutes: number; onChooseSubject: (id: string) => void; onToggle: () => void; onChangeMode: (mode: "stopwatch" | "pomodoro") => void; onChangePhase: () => void; onReset: () => void; onAddSubject: (name: string, color?: string) => void; onDeleteSubject: (id: string) => void; savedSession: string | null }) {
+function TimerScreen({ activeSubject, subjects, studyLogs, selectedSubject, totalToday, seconds, pomodoroRemaining, isRunning, timerMode, pomodoroPhase, focusMinutes, breakMinutes, onChooseSubject, onToggle, onChangeMode, onChangePhase, onReset, onAddSubject, onDeleteSubject, onOpenPlanner, savedSession }: { activeSubject: Subject; subjects: Subject[]; studyLogs: StudyLog[]; selectedSubject: string; totalToday: number; seconds: number; pomodoroRemaining: number; isRunning: boolean; timerMode: "stopwatch" | "pomodoro"; pomodoroPhase: "집중" | "휴식"; focusMinutes: number; breakMinutes: number; onChooseSubject: (id: string) => void; onToggle: () => void; onChangeMode: (mode: "stopwatch" | "pomodoro") => void; onChangePhase: () => void; onReset: () => void; onAddSubject: (name: string, color?: string) => void; onDeleteSubject: (id: string) => void; onOpenPlanner: () => void; savedSession: string | null }) {
   const [isManagingSubjects, setIsManagingSubjects] = useState(false);
   const [subjectName, setSubjectName] = useState("");
   const [subjectColor, setSubjectColor] = useState(subjectPalettes[0].color);
   const displayTime = timerMode === "pomodoro"
     ? `${String(Math.floor(pomodoroRemaining / 60)).padStart(2, "0")}:${String(pomodoroRemaining % 60).padStart(2, "0")}`
     : formatDuration(seconds);
+  const recentLogs = [...studyLogs]
+    .filter((log) => logDateKey(log) === dateKey())
+    .sort((a, b) => new Date(b.recordedAt ?? 0).getTime() - new Date(a.recordedAt ?? 0).getTime())
+    .slice(0, 3);
   const submitSubject = () => {
     if (!subjectName.trim()) return;
     onAddSubject(subjectName, subjectColor);
@@ -1715,7 +1702,7 @@ function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, sec
       {timerMode === "pomodoro" && <button className="pomodoro-rule" onClick={onChangePhase}><span>{pomodoroPhase === "집중" ? `${focusMinutes}분 집중 중` : `${breakMinutes}분 휴식 중`}</span><b>{pomodoroPhase === "집중" ? "휴식으로 전환" : "집중으로 전환"} →</b></button>}
     </section>
     <section className="subject-timer-list">
-      <div className="subject-list-heading"><div><span className="section-kicker">SUBJECT TIMER</span><h2>과목별 집중 시간</h2></div><span>오늘 기록 · 한 과목씩 자동 저장</span></div>
+      <div className="subject-list-heading"><div><span className="section-kicker">오늘의 과목</span><h2>과목별 집중 시간</h2></div><span>한 과목씩 자동 저장</span></div>
       {subjects.map((subject) => { const isActive = subject.id === selectedSubject; return <article key={subject.id} className={`subject-timer-row ${isActive ? "active" : ""}`}><span className="subject-token" style={{ background: subject.color }}>{subject.short}</span><span className="subject-timer-name"><b>{subject.name}</b><small>{isActive && isRunning ? "현재 측정 중" : "버튼을 눌러 시작"}</small></span><strong>{formatDuration(subject.minutes * 60)}</strong>{isManagingSubjects ? <button className="subject-delete-button" onClick={() => onDeleteSubject(subject.id)} disabled={subjects.length === 1}>삭제</button> : <button className="subject-play" onClick={() => onChooseSubject(subject.id)} aria-label={`${subject.name} ${isActive && isRunning ? "측정 중지" : "측정 시작"}`}>{isActive && isRunning ? "중지" : "시작"}</button>}</article>; })}
       <div className="timer-subject-manager">
         <div className="timer-subject-manager-head"><div><b>새 과목 추가</b><small>과목 이름과 기록 색상을 정해보세요.</small></div><button onClick={() => setIsManagingSubjects((value) => !value)}>{isManagingSubjects ? "완료" : "과목 편집"}</button></div>
@@ -1723,7 +1710,14 @@ function TimerScreen({ activeSubject, subjects, selectedSubject, totalToday, sec
         <div className="subject-add-row"><input value={subjectName} maxLength={12} onChange={(event) => setSubjectName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitSubject(); }} placeholder="예: 영어 독해" aria-label="새 과목 이름" /><button onClick={submitSubject} disabled={!subjectName.trim()}>추가</button></div>
       </div>
     </section>
-    {savedSession && <div className="saved-toast" role="status">✓ {savedSession}</div>}
+    {recentLogs.length > 0 && <section className="recent-session-card">
+      <div className="recent-session-head"><div><span>최근 집중 기록</span><small>과목을 바꾸면 이전 기록도 여기에 바로 남아요.</small></div><button onClick={onOpenPlanner}>전체 기록</button></div>
+      <div className="recent-session-list">{recentLogs.map((log) => {
+        const subject = subjects.find((item) => item.id === log.subjectId) ?? activeSubject;
+        return <div key={log.id}><i style={{ background: subject.color }} /><span><b>{subject.name}</b><small>{clockFromMinutes(log.startMinutes)} 시작</small></span><strong>{formatMinutes(loggedMinutes(log))}</strong></div>;
+      })}</div>
+    </section>}
+    {savedSession && <div className="saved-toast" role="status">{savedSession}</div>}
   </section>;
 }
 
@@ -1797,7 +1791,7 @@ function StatsScreen({ subjects, studyLogs }: { subjects: Subject[]; studyLogs: 
   const maxValue = Math.max(...values, 1);
 
   return <section className="stats-page stats-v3">
-    <div className="stats-title-row"><div><span className="section-kicker">STUDY REPORT</span><h1>통계</h1></div><div className="stats-period stats-period-main" role="tablist"><button className={range === "day" ? "selected" : ""} onClick={() => setRange("day")}>오늘</button><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>7일</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>월간</button></div></div>
+    <div className="stats-title-row"><div><span className="section-kicker">학습 리포트</span><h1>통계</h1></div><div className="stats-period stats-period-main" role="tablist"><button className={range === "day" ? "selected" : ""} onClick={() => setRange("day")}>오늘</button><button className={range === "week" ? "selected" : ""} onClick={() => setRange("week")}>7일</button><button className={range === "month" ? "selected" : ""} onClick={() => setRange("month")}>월간</button></div></div>
     <article className="stats-highlight stats-overview"><span>{rangeLabel} 순공 시간</span><strong>{formatMinutes(periodTotal)}</strong><div><p>{activeDays ? `${activeDays}일 공부 · 하루 평균 ${formatMinutes(averageMinutes)}` : "타이머를 시작하면 분석이 쌓여요."}</p><b className={periodTotal >= previousTotal ? "up" : "down"}>{comparison}</b></div></article>
     <div className="stats-metric-grid">
       <article><span>연속 공부</span><strong>{streak}<small>일</small></strong><p>최근 학습 흐름</p></article>
@@ -1891,17 +1885,19 @@ function StudyCalendar({ subjects, studyLogs, calendarSchedules, setCalendarSche
   </section>;
 }
 
-function SettingsPanel({ user, profileName, profileColor, onOpenAccount, isDark, setIsDark, plannerTheme, setPlannerTheme, preferences, onUpdatePreferences, onToggleNotification, onExportData, onClearStudyRecords, hasStudyRecords }: { user: AuthUser | null; profileName: string; profileColor: string; onOpenAccount: () => void; isDark: boolean; setIsDark: (value: boolean) => void; plannerTheme: PlannerTheme; setPlannerTheme: (value: PlannerTheme) => void; preferences: StudyPreferences; onUpdatePreferences: (next: Partial<StudyPreferences>) => void; onToggleNotification: () => void; onExportData: () => void; onClearStudyRecords: () => void; hasStudyRecords: boolean }) {
+function SettingsPanel({ user, profileName, profileColor, onOpenAccount, isDark, setIsDark, plannerTheme, setPlannerTheme, preferences, onUpdatePreferences, onToggleNotification, onClearStudyRecords, hasStudyRecords }: { user: AuthUser | null; profileName: string; profileColor: string; onOpenAccount: () => void; isDark: boolean; setIsDark: (value: boolean) => void; plannerTheme: PlannerTheme; setPlannerTheme: (value: PlannerTheme) => void; preferences: StudyPreferences; onUpdatePreferences: (next: Partial<StudyPreferences>) => void; onToggleNotification: () => void; onClearStudyRecords: () => void; hasStudyRecords: boolean }) {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const themes: { id: PlannerTheme; label: string; description: string }[] = [
     { id: "milk", label: "웜 베이지", description: "가장 편안한 크림빛 배경" },
-    { id: "fog", label: "포그 블루", description: "집중을 방해하지 않는 회청색 배경" },
-    { id: "rose", label: "더스티 로즈", description: "채도를 낮춘 차분한 로즈 배경" },
+    { id: "fog", label: "미스트 블루", description: "맑고 차분한 푸른 회색" },
+    { id: "sage", label: "세이지 그린", description: "오래 봐도 편안한 잎사귀 색" },
+    { id: "lilac", label: "소프트 라일락", description: "은은하고 부드러운 보랏빛" },
+    { id: "rose", label: "더스티 로즈", description: "채도를 낮춘 따뜻한 로즈" },
   ];
   const selectedTheme = themes.find((theme) => theme.id === plannerTheme)!;
 
   return <section className="settings-page settings-v2">
-    <div className="settings-heading"><span>SETTINGS</span><h1>설정</h1><p>집중 방식과 화면을 내 공부 습관에 맞게 조정하세요.</p></div>
+    <div className="settings-heading"><span>환경 설정</span><h1>설정</h1><p>집중 방식과 화면을 내 공부 습관에 맞게 조정하세요.</p></div>
 
     <button className="settings-account-card" onClick={onOpenAccount}>
       <span className="settings-avatar" style={{ background: profileColor }}>{profileName.trim().slice(0, 1) || "나"}</span>
@@ -1922,14 +1918,13 @@ function SettingsPanel({ user, profileName, profileColor, onOpenAccount, isDark,
     <section className="settings-panel-group">
       <h2>화면 및 테마</h2>
       <SettingsToggle icon={isDark ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />} label="다크 모드" description="어두운 환경에서 눈부심을 줄여요" checked={isDark} onChange={() => setIsDark(!isDark)} />
-      <button className="settings-row" onClick={() => setIsThemeOpen((value) => !value)}><span className="settings-row-icon"><Palette aria-hidden="true" /></span><span className="settings-row-copy"><b>플래너 테마</b><small>웹 안쪽 배경 색상을 바꿔요</small></span><span className="settings-row-value">{selectedTheme.label}</span><ChevronRight className={isThemeOpen ? "rotated" : ""} aria-hidden="true" /></button>
-      {isThemeOpen && <div className="planner-theme-options settings-theme-options">{themes.map((theme) => <button key={theme.id} className={plannerTheme === theme.id ? "selected" : ""} onClick={() => { setPlannerTheme(theme.id); setIsThemeOpen(false); }}><i className={`theme-swatch ${theme.id}`} /><span><b>{theme.label}</b><small>{theme.description}</small></span><strong>{plannerTheme === theme.id ? "✓" : ""}</strong></button>)}</div>}
+      <button className="settings-row" onClick={() => setIsThemeOpen((value) => !value)}><span className="settings-row-icon"><Palette aria-hidden="true" /></span><span className="settings-row-copy"><b>화면 테마</b><small>앱 안쪽 배경 분위기를 바꿔요</small></span><span className="settings-row-value">{selectedTheme.label}</span><ChevronRight className={isThemeOpen ? "rotated" : ""} aria-hidden="true" /></button>
+      {isThemeOpen && <div className="planner-theme-options settings-theme-options">{themes.map((theme) => <button key={theme.id} className={plannerTheme === theme.id ? "selected" : ""} onClick={() => { setPlannerTheme(theme.id); setIsThemeOpen(false); }}><i className={`theme-swatch ${theme.id}`} /><span><b>{theme.label}</b><small>{theme.description}</small></span><strong aria-label={plannerTheme === theme.id ? "선택됨" : undefined}>{plannerTheme === theme.id ? "•" : ""}</strong></button>)}</div>}
       <SettingsToggle icon={<Palette aria-hidden="true" />} label="움직임 줄이기" description="화면 전환 애니메이션을 최소화해요" checked={preferences.reduceMotion} onChange={() => onUpdatePreferences({ reduceMotion: !preferences.reduceMotion })} />
     </section>
 
     <section className="settings-panel-group">
       <h2>내 데이터</h2>
-      <button className="settings-row" onClick={onExportData}><span className="settings-row-icon"><Download aria-hidden="true" /></span><span className="settings-row-copy"><b>내 기록 내보내기</b><small>공부 기록과 설정을 JSON 파일로 받아요</small></span><ChevronRight aria-hidden="true" /></button>
       <button className="settings-row danger" onClick={onClearStudyRecords} disabled={!hasStudyRecords}><span className="settings-row-icon"><Trash2 aria-hidden="true" /></span><span className="settings-row-copy"><b>공부 기록 비우기</b><small>과목과 할 일은 그대로 유지돼요</small></span><ChevronRight aria-hidden="true" /></button>
     </section>
 
