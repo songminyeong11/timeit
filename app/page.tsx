@@ -148,6 +148,27 @@ type ActiveTimerState = {
   running: boolean;
 };
 
+type NativeFocusStatus = {
+  native: boolean;
+  usageAccess: boolean;
+  overlayAccess: boolean;
+  ready: boolean;
+  active: boolean;
+  allowedCount: number;
+};
+
+declare global {
+  interface Window {
+    TimeitFocusNative?: {
+      getStatus: () => string;
+      startFocus: () => string;
+      stopFocus: () => void;
+      openAllowedApps: () => void;
+      openFocusSetup: () => void;
+    };
+  }
+}
+
 const GOOGLE_CLIENT_ID = "322831832887-fm9l7tdqbp1qgfd6v52rirbt4b1nmdt6.apps.googleusercontent.com";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const ACTIVE_TIMER_KEY = "timeit-active-timer-v1";
@@ -191,6 +212,33 @@ function normalizePreferences(value?: Partial<StudyPreferences> | null): StudyPr
     completionNotification: Boolean(value?.completionNotification),
     reduceMotion: Boolean(value?.reduceMotion),
   };
+}
+
+function readNativeFocusStatus(): NativeFocusStatus | null {
+  if (typeof window === "undefined" || !window.TimeitFocusNative) return null;
+  try {
+    return JSON.parse(window.TimeitFocusNative.getStatus()) as NativeFocusStatus;
+  } catch {
+    return null;
+  }
+}
+
+function startNativeFocus() {
+  if (typeof window === "undefined" || !window.TimeitFocusNative) return;
+  try {
+    window.TimeitFocusNative.startFocus();
+  } catch {
+    // The web timer must remain usable when the native bridge is unavailable.
+  }
+}
+
+function stopNativeFocus() {
+  if (typeof window === "undefined" || !window.TimeitFocusNative) return;
+  try {
+    window.TimeitFocusNative.stopFocus();
+  } catch {
+    // The Android service may already have stopped.
+  }
 }
 
 function playTimerTone(kind: "start" | "stop" | "complete") {
@@ -661,6 +709,13 @@ export default function Home() {
     window.localStorage.setItem(ACTIVE_TIMER_KEY, JSON.stringify(activeTimer));
   }, [isRunning, pomodoroPhase, pomodoroRemaining, seconds, selectedSubject, sessionStartedAt, storageReady, timerMode]);
 
+  useEffect(() => {
+    if (!storageReady) return;
+    const shouldBlockApps = isRunning && (timerMode === "stopwatch" || pomodoroPhase === "집중");
+    if (shouldBlockApps) startNativeFocus();
+    else stopNativeFocus();
+  }, [isRunning, pomodoroPhase, storageReady, timerMode]);
+
   const accountSnapshot = (): AccountData => ({
     subjects,
     todos,
@@ -806,6 +861,7 @@ export default function Home() {
     setProfileColor("#e5a089");
     setProfileStatus("");
     setIsRunning(false);
+    stopNativeFocus();
     setSeconds(0);
     setSessionStartedAt(null);
     ["timeit-todos", "timeit-study-logs", "timeit-subjects", "timeit-subject-minutes", "timeit-profile-name", "timeit-profile-color", "timeit-profile-status", ACTIVE_TIMER_KEY].forEach((key) => window.localStorage.removeItem(key));
@@ -1045,6 +1101,7 @@ export default function Home() {
   const saveSession = () => {
     recordActiveSubject();
     setIsRunning(false);
+    stopNativeFocus();
     if (preferences.timerSound) playTimerTone("stop");
   };
 
@@ -1058,6 +1115,7 @@ export default function Home() {
       setSavedSession(null);
     }
     if (preferences.timerSound) playTimerTone("start");
+    startNativeFocus();
     setIsRunning((value) => !value);
   };
 
@@ -1079,12 +1137,14 @@ export default function Home() {
       ? `${previousSubject.name} ${formatMinutes(recorded)} 저장 · ${nextSubject.name} 시작`
       : `${nextSubject.name} 측정 시작`);
     if (preferences.timerSound) playTimerTone("start");
+    startNativeFocus();
     setIsRunning(true);
   };
 
   const changeTimerMode = (mode: "stopwatch" | "pomodoro") => {
     if (isRunning && seconds > 0) recordActiveSubject();
     setIsRunning(false);
+    stopNativeFocus();
     setTimerMode(mode);
     setSeconds(0);
     setSessionStartedAt(null);
@@ -1095,6 +1155,7 @@ export default function Home() {
   const resetTimer = () => {
     if (isRunning && seconds > 0 && !window.confirm("현재 측정한 시간을 기록하지 않고 초기화할까요?")) return;
     setIsRunning(false);
+    stopNativeFocus();
     setSeconds(0);
     setSessionStartedAt(null);
     setPomodoroPhase("집중");
@@ -1705,6 +1766,7 @@ function TimerScreen({ activeSubject, subjects, studyLogs, selectedSubject, tota
       <div className="focus-controls"><button className="timer-reset" onClick={onReset} aria-label="타이머 초기화">↺</button><button className="timer-main" onClick={onToggle}>{isRunning ? "중지" : "집중 시작"}<b>{isRunning ? "■" : "▶"}</b></button></div>
       {timerMode === "pomodoro" && <button className="pomodoro-rule" onClick={onChangePhase}><span>{pomodoroPhase === "집중" ? `${focusMinutes}분 집중 중` : `${breakMinutes}분 휴식 중`}</span><b>{pomodoroPhase === "집중" ? "휴식으로 전환" : "집중으로 전환"} →</b></button>}
     </section>
+    <NativeFocusGuardCard isRunning={isRunning} />
     <section className="subject-timer-list">
       <div className="subject-list-heading"><div><span className="section-kicker">오늘의 과목</span><h2>과목별 집중 시간</h2></div><span>한 과목씩 자동 저장</span></div>
       {subjects.map((subject) => { const isActive = subject.id === selectedSubject; return <article key={subject.id} className={`subject-timer-row ${isActive ? "active" : ""}`}><span className="subject-token" style={{ background: subject.color }}>{subject.short}</span><span className="subject-timer-name"><b>{subject.name}</b><small>{isActive && isRunning ? "현재 측정 중" : "버튼을 눌러 시작"}</small></span><strong>{formatDuration(subject.minutes * 60)}</strong>{isManagingSubjects ? <button className="subject-delete-button" onClick={() => onDeleteSubject(subject.id)} disabled={subjects.length === 1}>삭제</button> : <button className="subject-play" onClick={() => onChooseSubject(subject.id)} aria-label={`${subject.name} ${isActive && isRunning ? "측정 중지" : "측정 시작"}`}>{isActive && isRunning ? "중지" : "시작"}</button>}</article>; })}
@@ -1722,6 +1784,36 @@ function TimerScreen({ activeSubject, subjects, studyLogs, selectedSubject, tota
       })}</div>
     </section>}
     {savedSession && <div className="saved-toast" role="status">{savedSession}</div>}
+  </section>;
+}
+
+function NativeFocusGuardCard({ isRunning }: { isRunning: boolean }) {
+  const [status, setStatus] = useState<NativeFocusStatus | null>(null);
+
+  useEffect(() => {
+    const refresh = () => setStatus(readNativeFocusStatus());
+    refresh();
+    window.addEventListener("timeitFocusStatusChanged", refresh);
+    const timer = window.setInterval(refresh, 2000);
+    return () => {
+      window.removeEventListener("timeitFocusStatusChanged", refresh);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  if (!status?.native) return null;
+  const label = !status.ready
+    ? "권한 설정 필요"
+    : isRunning && status.active
+      ? "허용 앱 외 차단 중"
+      : "타이머 시작 시 자동 실행";
+
+  return <section className={`native-focus-card ${status.active ? "active" : ""}`}>
+    <span className="native-focus-icon"><ShieldCheck aria-hidden="true" /></span>
+    <span className="native-focus-copy"><b>집중 앱 차단</b><small>{label} · 허용 앱 {status.allowedCount}개</small></span>
+    <button onClick={() => status.ready ? window.TimeitFocusNative?.openAllowedApps() : window.TimeitFocusNative?.openFocusSetup()}>
+      {status.ready ? "허용 앱" : "설정"}
+    </button>
   </section>;
 }
 

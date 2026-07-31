@@ -1539,6 +1539,66 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 
 /* Timer subject management + settings */
+.native-focus-card {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid #e7e1dc;
+  border-radius: 16px;
+  background: rgba(255,255,255,.72);
+  box-shadow: 0 8px 22px rgba(63,55,50,.04);
+}
+.native-focus-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #eee9e4;
+  color: #827874;
+}
+.native-focus-icon svg { width: 17px; height: 17px; stroke-width: 2; }
+.native-focus-copy { min-width: 0; display: grid; gap: 3px; }
+.native-focus-copy b { color: #4c4746; font-size: 11px; }
+.native-focus-copy small { color: #9c9491; font-size: 8.5px; }
+.native-focus-card > button {
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: #efebe7;
+  color: #746b68;
+  font-size: 9px;
+  font-weight: 780;
+}
+.native-focus-card.active {
+  border-color: color-mix(in srgb, var(--subject) 32%, #e2ddd8);
+  background: color-mix(in srgb, var(--subject-soft) 34%, #fff);
+}
+.native-focus-card.active .native-focus-icon {
+  background: var(--subject);
+  color: #fff;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--subject) 25%, transparent);
+}
+.dark .native-focus-card {
+  border-color: #3d4546;
+  background: rgba(43,50,51,.88);
+  box-shadow: none;
+}
+.dark .native-focus-icon { background: #3a4243; color: #ddd5d0; }
+.dark .native-focus-copy b { color: #f1ece7; }
+.dark .native-focus-copy small { color: #b8b0ac; }
+.dark .native-focus-card > button { background: #3a4243; color: #e0d8d3; }
+.focus-active .native-focus-card {
+  border-color: #343c3d;
+  background: #1d2224;
+  box-shadow: none;
+}
+.focus-active .native-focus-copy b { color: #f2eee8; }
+.focus-active .native-focus-copy small { color: #929b99; }
+.focus-active .native-focus-card > button { background: #2c3335; color: #c7cfcc; }
+
 .timer-subject-manager {
   margin-top: 14px;
   padding: 16px;

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">타임잇</string>
+    <string name="blocked_app_message">%1$s은(는) 허용 앱이 아니에요</string>
+</resources>
