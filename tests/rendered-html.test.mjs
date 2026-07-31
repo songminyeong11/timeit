@@ -114,6 +114,12 @@ test("keeps automatic timer logging and readable planning affordances wired", as
   assert.match(page, /최장 세션/);
   assert.match(page, /집중 시간대/);
   assert.match(page, /calendar-study-breakdown/);
+  assert.match(page, /className="schedule-preview"/);
+  assert.match(page, /className="study-time"/);
+  assert.match(page, /calendar-intensity-legend/);
+  assert.match(page, /공부할수록 진해져요/);
+  assert.match(css, /\.calendar-day-meta \.schedule-preview/);
+  assert.match(css, /\.calendar-day-meta \.study-time/);
   assert.match(css, /\.subject-token \{\s*color: #fff !important;/);
   assert.match(css, /\.stats-metric-grid/);
   assert.match(css, /\.daypart-chart/);

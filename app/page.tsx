@@ -1882,7 +1882,30 @@ function StudyCalendar({ subjects, studyLogs, calendarSchedules, setCalendarSche
       <div className="calendar-title-row"><div><span className="section-kicker">STUDY CALENDAR</span><h2>캘린더</h2></div><button className={`google-calendar-button ${googleAccessToken ? "connected" : ""}`} onClick={googleAccessToken ? onRefreshGoogle : onConnectGoogle} disabled={googleAuthBusy || (!googleReady && !googleAccessToken)}><CalendarDays aria-hidden="true" />{googleAuthBusy ? "연결 중" : googleAccessToken ? (calendarLoading ? "동기화 중" : "일정 새로고침") : "Google 캘린더 연결"}</button></div>
       <div className="calendar-month-nav"><button onClick={() => moveCalendarMonth(-1)} aria-label="이전 달">‹</button><strong>{calendarYear}년 {calendarMonthIndex + 1}월</strong><button onClick={() => moveCalendarMonth(1)} aria-label="다음 달">›</button></div>
       <div className="study-calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
-      <div className="study-calendar-grid">{Array.from({ length: calendarLeading }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}{calendarDays.map((item) => <button className={`calendar-day grass-${grassLevel(item.hours)} ${item.weekday === 6 ? "saturday" : ""} ${item.isHoliday ? "holiday" : ""} ${selectedCalendarDate === item.key ? "selected" : ""} ${item.key === dateKey() ? "today" : ""}`} onClick={() => setSelectedCalendarDate(item.key)} key={item.key}><b>{item.day}</b><span className="calendar-day-meta">{item.holidays[0] && <small className="holiday-name">{item.holidays[0].name}</small>}{item.hours > 0 && <small>{displayHours(item.hours)}</small>}</span>{item.schedules.length > 0 && <i>{item.schedules.length}</i>}</button>)}</div>
+      <div className="study-calendar-grid">{Array.from({ length: calendarLeading }, (_, index) => <span className="calendar-blank" key={`blank-${index}`} />)}{calendarDays.map((item) => {
+        const firstSchedule = item.schedules[0];
+        const calendarLabel = [
+          `${calendarMonthIndex + 1}월 ${item.day}일`,
+          item.holidays[0]?.name,
+          firstSchedule?.title,
+          item.hours > 0 ? `${displayHours(item.hours)} 공부` : undefined,
+        ].filter(Boolean).join(", ");
+        return <button
+          className={`calendar-day grass-${grassLevel(item.hours)} ${item.weekday === 6 ? "saturday" : ""} ${item.isHoliday ? "holiday" : ""} ${selectedCalendarDate === item.key ? "selected" : ""} ${item.key === dateKey() ? "today" : ""}`}
+          onClick={() => setSelectedCalendarDate(item.key)}
+          aria-label={calendarLabel}
+          key={item.key}
+        >
+          <b>{item.day}</b>
+          <span className="calendar-day-meta">
+            {item.holidays[0] && <small className="holiday-name" title={item.holidays[0].name}>{item.holidays[0].name}</small>}
+            {firstSchedule && <small className="schedule-preview" title={firstSchedule.title}>• {firstSchedule.title}</small>}
+            {item.hours > 0 && <small className="study-time">{displayHours(item.hours)}</small>}
+          </span>
+          {item.schedules.length > 1 && <i aria-hidden="true">+{item.schedules.length - 1}</i>}
+        </button>;
+      })}</div>
+      <div className="calendar-intensity-legend" aria-label="공부시간 색상 농도"><span>공부할수록 진해져요</span><b>적게</b>{[0, 1, 2, 3, 4].map((level) => <i className={`grass-${level}`} key={level} />)}<b>많이</b></div>
       <div className="calendar-day-detail"><div><span>{selectedCalendarDate.replaceAll("-", ".")}</span><b>{formatMinutes(selectedStudyMinutes)} 집중</b></div>{selectedSubjectMinutes.length > 0 && <div className="calendar-study-breakdown">{selectedSubjectMinutes.map(({ subject, minutes }) => <span key={subject.id}><i style={{ background: subject.color }} /><b>{subject.name}</b><small>{formatMinutes(minutes)}</small></span>)}</div>}{selectedSchedules.length ? <ul>{selectedSchedules.map((schedule) => <li className={schedule.kind === "holiday" ? "holiday-schedule" : ""} key={schedule.id}><time>{schedule.kind === "holiday" ? "공휴일" : schedule.time ?? "종일"}</time><span><b>{schedule.title}</b>{schedule.description && <small>{schedule.description}</small>}</span></li>)}</ul> : <p>{googleAccessToken ? "이날 등록된 Google 일정이 없어요." : "Google 캘린더를 연결하면 휴대폰 일정이 보여요."}</p>}</div>
       <div className="calendar-sync-note"><span>{calendarSyncMessage}</span>{googleAccessToken && <button onClick={onDisconnectGoogle}>연결 해제</button>}</div>
     </article>

@@ -453,9 +453,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 /* Calendar cells use an independent palette so study intensity stays visible in both modes. */
 .study-calendar-card { background: var(--surface); border-color: var(--line); }
 .study-calendar-weekdays { color: var(--text-tertiary); font-size: 9px; font-weight: 700; }
-.study-calendar-grid { grid-auto-rows: 52px; gap: 5px; }
+.study-calendar-grid { grid-auto-rows: 62px; gap: 5px; }
 .calendar-day {
-  padding: 7px;
+  padding: 7px 6px 6px;
   border-color: color-mix(in srgb, var(--line) 72%, transparent);
   border-radius: 15px;
   color: #46534b;
@@ -466,9 +466,25 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .calendar-day.grass-2 { background: #afd0b7; }
 .calendar-day.grass-3 { background: #7fae8a; color: #173724; }
 .calendar-day.grass-4 { background: #4f8462; color: #fff; }
-.calendar-day b { font-size: 10px; font-weight: 700; }
-.calendar-day small { font-size: 7.5px; font-weight: 700; }
+.calendar-day b { font-size: 10px; font-weight: 760; }
+.calendar-day small { font-size: 7px; font-weight: 700; }
+.calendar-day-meta { align-self: end; gap: 1px; }
+.calendar-day-meta .schedule-preview {
+  color: #52655a;
+  font-weight: 720;
+  letter-spacing: -.02em;
+  opacity: .88;
+}
+.calendar-day-meta .study-time {
+  color: #315e40;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 7.5px;
+  font-weight: 900;
+  letter-spacing: -.055em;
+  opacity: 1;
+}
 .calendar-day.grass-3 small, .calendar-day.grass-4 small { color: #fff; opacity: .95; }
+.calendar-day.grass-3 .study-time, .calendar-day.grass-4 .study-time { color: #fff; opacity: 1; text-shadow: 0 1px 1px rgba(0,0,0,.16); }
 .calendar-day > i { border: 1px solid rgba(86,75,69,.08); background: rgba(255,255,255,.88); }
 .calendar-day.selected { border-color: #7b9384; box-shadow: inset 0 0 0 1px #7b9384, 0 4px 12px rgba(65,78,70,.1); }
 .calendar-day.today, .calendar-day.today.selected {
@@ -476,6 +492,23 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   box-shadow: inset 0 0 0 1.5px #3f4944, 0 5px 13px rgba(47,58,52,.15);
 }
 .calendar-day-detail { background: var(--surface-soft); border-color: var(--line); }
+.calendar-intensity-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: 10px 2px 1px;
+  color: var(--text-tertiary);
+  font-size: 7.5px;
+}
+.calendar-intensity-legend span { margin-right: auto; font-weight: 650; }
+.calendar-intensity-legend b { font-size: 7px; font-weight: 650; }
+.calendar-intensity-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(58,69,62,.06);
+}
 .calendar-sync-note, .calendar-day-detail p { color: var(--text-tertiary); }
 .calendar-sync-note button { color: #856d66; }
 .dark .study-calendar-weekdays { color: #bdb6b2; }
@@ -490,6 +523,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .dark .calendar-day.grass-3 { background: #4e795c; color: #f5faf6; }
 .dark .calendar-day.grass-4 { background: #5f936e; color: #fff; }
 .dark .calendar-day.grass-3 small, .dark .calendar-day.grass-4 small { color: #fff; }
+.dark .calendar-day-meta .schedule-preview { color: #d5ddd7; }
+.dark .calendar-day-meta .study-time { color: #bfe0c8; }
+.dark .calendar-day.grass-3 .study-time, .dark .calendar-day.grass-4 .study-time { color: #fff; }
 .dark .calendar-day > i { border-color: rgba(255,255,255,.08); background: rgba(20,25,25,.72); color: #f2d1c7; }
 .dark .calendar-day.saturday b { color: #9fc7ff; }
 .dark .calendar-day.holiday b, .dark .calendar-day-meta .holiday-name { color: #ffaaa4; }
@@ -499,6 +535,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   box-shadow: inset 0 0 0 1.5px #edf4ef, 0 5px 14px rgba(0,0,0,.28);
 }
 .dark .calendar-day-detail { background: #262d2e; border-color: #40494a; }
+.dark .calendar-intensity-legend { color: #bdb6b2; }
+.dark .calendar-intensity-legend i { box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
 .dark .calendar-day-detail p, .dark .calendar-sync-note { color: #bdb6b2; }
 .dark .calendar-sync-note button { color: #e4b2a4; }
 
@@ -563,7 +601,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 @media (max-width: 540px) {
   .phone-frame { border-radius: 0; }
   .content-scroll { padding-left: 18px; padding-right: 18px; }
-  .study-calendar-grid { grid-auto-rows: 50px; gap: 4px; }
+  .study-calendar-grid { grid-auto-rows: 60px; gap: 4px; }
   .auth-overlay { align-items: end; padding: 12px; }
   .auth-dialog { width: 100%; padding: 30px 24px calc(26px + env(safe-area-inset-bottom)); border-radius: 28px; }
 }
